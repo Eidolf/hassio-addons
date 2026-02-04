@@ -57,6 +57,9 @@ RUN git clone https://github.com/Eidolf/GoogleFindMyTools.git .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy pre-existing secrets if available (bypasses GCM registration if valid)
+COPY secrets.json /app/Auth/secrets.json
+
 # Copy run script
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
