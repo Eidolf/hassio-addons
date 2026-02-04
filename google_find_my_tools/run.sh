@@ -22,7 +22,8 @@ echo "[Add-on] Starting noVNC..."
 # We forward internal port 5900 (VNC) to 8099 (Ingress)
 /opt/novnc/utils/websockify/run --web /opt/novnc 8099 localhost:5900 &
 
-echo "[Add-on] Starting Application..."
+
+echo "[Add-on] Starting Application in Interactive Terminal..."
 
 # Remove potentially stale secrets
 if [ -f "Auth/secrets.json" ]; then
@@ -30,22 +31,21 @@ if [ -f "Auth/secrets.json" ]; then
     rm Auth/secrets.json
 fi
 
-# Run the python app
-# We use 'stdbuf' to unbuffer output so it shows in HA logs instantly
-# Run the python app
-# We use 'stdbuf' to unbuffer output so it shows in HA logs instantly
-python -u main_addon.py
+# Run the python app inside xterm so user can interact via VNC
+# We chain commands: run app -> copy secrets -> keep window open for review
+xterm -geometry 130x40 -title "Google Find My Tools - Interactive Shell" -e "python3 main.py; \
+    if [ -f 'Auth/secrets.json' ]; then \
+        echo '[Add-on] Found secrets.json. Copying to /share/google_find_my_secrets.json...'; \
+        cp Auth/secrets.json /share/google_find_my_secrets.json; \
+        chmod 666 /share/google_find_my_secrets.json; \
+        echo '[Add-on] Secrets copied successfully!'; \
+    else \
+        echo '[Add-on] No secrets.json found in Auth/.'; \
+    fi; \
+    echo ''; \
+    echo 'Process finished. You can now close this window or the add-on.'; \
+    read -p 'Press Enter to exit container...' var"
 
-# When main.py exits, we copy secrets if they exist
-echo "[Add-on] customized main.py finished."
-
-if [ -f "Auth/secrets.json" ]; then
-    echo "[Add-on] Found secrets.json. Copying to /share/google_find_my_secrets.json..."
-    cp Auth/secrets.json /share/google_find_my_secrets.json
-    chmod 666 /share/google_find_my_secrets.json
-    echo "[Add-on] Secrets copied successfully!"
-else
-    echo "[Add-on] No secrets.json found in Auth/."
-fi
+echo "[Add-on] Xterm session ended. Exiting..."
 
 echo "[Add-on] Exiting..."

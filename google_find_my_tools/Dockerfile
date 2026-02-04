@@ -31,6 +31,7 @@ RUN apt-get update && apt-get install -y \
     net-tools \
     python3-websockify \
     python3-numpy \
+    xterm \
     --no-install-recommends
 
 # Install noVNC
@@ -52,13 +53,6 @@ WORKDIR /app
 
 # Clone the repository
 RUN git clone https://github.com/Eidolf/GoogleFindMyTools.git .
-
-# Copy custom addon main script
-COPY main_addon.py /app/main_addon.py
-COPY fcmregister_patched.py /app/Auth/firebase_messaging/fcmregister.py
-
-# Patch Auth/auth_flow.py to skip input prompt in unattended mode
-RUN sed -i 's/user_input = input.*/user_input = ""/' Auth/auth_flow.py
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt

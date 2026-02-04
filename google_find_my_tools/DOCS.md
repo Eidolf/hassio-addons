@@ -4,17 +4,20 @@ Dieses Add-on ermöglicht die Nutzung der Google Find My Tools in Home Assistant
 
 ## Funktion
 
-Das Add-on startet einen Docker-Container mit einer grafischen Oberfläche (via noVNC), um den interaktiven Login-Prozess bei Google durchzuführen.
+Das Add-on startet einen Docker-Container mit einer grafischen Oberfläche (via noVNC). Darin öffnet sich ein Terminal, in dem das Original-Skript der "GoogleFindMyTools" läuft.
 
 ## Einrichtung
 
 1.  Starte das Add-on.
-2.  Klicke auf **"WEB UI ÖFFNEN"**, um die grafische Oberfläche zu sehen.
-3.  Warte kurz, bis der Chrome-Browser startet und die Google-Login-Seite anzeigt.
-4.  **Erster Login:** Melde dich mit deinem Google-Konto an.
-5.  Das Skript wird nun automatisch deine Geräteliste abrufen und das **erste Gerät** auswählen, um eine Standortabfrage zu starten.
-6.  **Zweiter Login:** Es öffnet sich erneut ein Login-Fenster (oder eine Bestätigung). Dies ist notwendig, um den vollen Zugriff für die `secrets.json` zu generieren. Führe auch diesen Login durch.
-7.  Sobald beide Schritte erfolgreich waren, beendet sich das Add-on und speichert die Daten.
+2.  Klicke auf **"WEB UI ÖFFNEN"**.
+3.  Du siehst nun einen Linux-Desktop. Eventuell ist das Terminal-Fenster ("Google Find My Tools - Interactive Shell") bereits offen. Falls nicht, warte kurz.
+4.  **Interaktiver Modus:** Da das Skript nun sichtbar im Terminal läuft, folge den Anweisungen direkt am Bildschirm:
+    -   Das Skript wird dich auffordern, `Enter` zu drücken, um den Login zu starten.
+    -   Es öffnet sich das Chrome-Fenster für den Login.
+    -   Nach dem Login kehrst du zum Terminal zurück.
+    -   Wähle dort (per Nummerneingabe) ein Gerät aus.
+    -   Führe den zweiten Login durch, falls gefordert.
+    -   Sobald alles durchgelaufen ist, kopiert das Skript automatisch die `secrets.json`.
 
 ## Secrets / Anmeldedaten
 
@@ -22,10 +25,7 @@ Das Add-on speichert die erfolgreichen Anmeldedaten (`secrets.json`) automatisch
 
 `/share/google_find_my_secrets.json`
 
-Diese Datei kann dann von anderen Integrationen oder Skripten genutzt werden.
-
 ## Hinweise
 
--   Der Login muss manuell über die Web UI durchgeführt werden.
--   Du musst **mindestens ein Gerät** in deinem "Google Find My Device"-Netzwerk haben, damit der Prozess funktioniert.
--   Wenn das Add-on neu gestartet wird, wird die `secrets.json` neu generiert (falls du den Prozess erneut durchläufst). Sicher dir die Datei am besten, wenn alles geklappt hat.
+-   Wenn das Skript abstürzt oder sich schließt, kannst du das Add-on einfach neu starten (Restart).
+-   Wenn du fertig bist und die Meldung "Secrets copied successfully!" siehst, kannst du das Fenster schließen oder das Add-on stoppen.
