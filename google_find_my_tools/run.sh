@@ -24,6 +24,12 @@ echo "[Add-on] Starting noVNC..."
 
 echo "[Add-on] Starting Application..."
 
+# Remove potentially stale secrets
+if [ -f "Auth/secrets.json" ]; then
+    echo "[Add-on] Removing stale Auth/secrets.json..."
+    rm Auth/secrets.json
+fi
+
 # Run the python app
 # We use 'stdbuf' to unbuffer output so it shows in HA logs instantly
 python -u main.py
