@@ -1,0 +1,19 @@
+name: "Google Find My Tools"
+version: "1.0.0"
+slug: "google_find_my_tools"
+description: "Experimental tools for Google's Find My Device Network enabled in Docker."
+url: "https://github.com/Eidolf/GoogleFindMyTools"
+arch:
+  - amd64
+init: false
+map:
+  - "share:rw"
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: Web Interface (noVNC)
+ingress: true
+ingress_port: 8099
+options: {}
+schema: {}
+image: "google_find_my_tools"
