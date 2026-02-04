@@ -1,5 +1,5 @@
 name: "Google Find My Tools"
-version: "1.0.3"
+version: "1.0.4"
 slug: "google_find_my_tools"
 description: "Experimental tools for Google's Find My Device Network enabled in Docker."
 url: "https://github.com/Eidolf/GoogleFindMyTools"

@@ -55,6 +55,7 @@ RUN git clone https://github.com/Eidolf/GoogleFindMyTools.git .
 
 # Copy custom addon main script
 COPY main_addon.py /app/main_addon.py
+COPY fcmregister_patched.py /app/Auth/firebase_messaging/fcmregister.py
 
 # Patch Auth/auth_flow.py to skip input prompt in unattended mode
 RUN sed -i 's/user_input = input.*/user_input = ""/' Auth/auth_flow.py
