@@ -58,6 +58,8 @@ RUN git clone https://github.com/Eidolf/GoogleFindMyTools.git .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy test script for GCM debugging
+COPY fcmregister_patched.py /app/Auth/firebase_messaging/fcmregister.py
+COPY fcm_receiver_patched.py /app/Auth/fcm_receiver.py
 COPY test_gcm.py /app/test_gcm.py
 RUN pip install aiohttp
 
