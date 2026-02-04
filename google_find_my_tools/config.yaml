@@ -16,4 +16,4 @@ ingress: true
 ingress_port: 8099
 options: {}
 schema: {}
-image: "google_find_my_tools"
+
