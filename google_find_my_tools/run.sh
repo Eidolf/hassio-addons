@@ -43,6 +43,8 @@ xterm -geometry 130x40 -title "Google Find My Tools - Interactive Shell" -e "pyt
         echo '[Add-on] No secrets.json found in Auth/.'; \
     fi; \
     echo ''; \
+    echo 'To test GCM registration fix, run: python3 test_gcm.py'; \
+    echo 'If that works, you can edit Auth/firebase_messaging/fcmregister.py with the working headers.'; \
     echo 'Process finished. You can now close this window or the add-on.'; \
     read -p 'Press Enter to exit container...' var"
 
