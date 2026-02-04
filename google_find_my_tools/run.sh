@@ -32,7 +32,9 @@ fi
 
 # Run the python app
 # We use 'stdbuf' to unbuffer output so it shows in HA logs instantly
-python -u main.py
+# Run the python app
+# We use 'stdbuf' to unbuffer output so it shows in HA logs instantly
+python -u main_addon.py
 
 # When main.py exits, we copy secrets if they exist
 echo "[Add-on] customized main.py finished."
