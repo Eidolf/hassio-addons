@@ -15,8 +15,9 @@ fluxbox &
 
 # Start autocutsel to sync X11 clipboard with VNC
 echo "[Add-on] Starting autocutsel..."
-autocutsel -fork
-autocutsel -selection PRIMARY -fork
+sleep 1
+autocutsel &
+autocutsel -selection PRIMARY &
 
 # Start x11vnc
 echo "[Add-on] Starting x11vnc..."
