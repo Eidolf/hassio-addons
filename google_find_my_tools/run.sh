@@ -13,6 +13,11 @@ sleep 2
 echo "[Add-on] Starting Fluxbox..."
 fluxbox &
 
+# Start autocutsel to sync X11 clipboard with VNC
+echo "[Add-on] Starting autocutsel..."
+autocutsel -fork
+autocutsel -selection PRIMARY -fork
+
 # Start x11vnc
 echo "[Add-on] Starting x11vnc..."
 x11vnc -display :1 -forever -shared -nopw -quiet &

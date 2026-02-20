@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y \
     libnspr4     lsb-release \
     xdg-utils \
     fluxbox \
+    autocutsel \
     x11vnc \
     net-tools \
     python3-websockify \
@@ -57,11 +58,14 @@ RUN git clone https://github.com/Eidolf/GoogleFindMyTools.git .
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy test script for GCM debugging
+# Copy test script for FCM debugging
 COPY fcmregister_patched.py /app/Auth/firebase_messaging/fcmregister.py
 COPY fcm_receiver_patched.py /app/Auth/fcm_receiver.py
 COPY test_gcm.py /app/test_gcm.py
 RUN pip install aiohttp
+
+# Prevent infinite loop in LocateTracker if FCM is blocked
+RUN sed -i 's/while result is None:/for _ in range(100):\\n        if result is not None: break/g' /app/NovaApi/ExecuteAction/LocateTracker/location_request.py
 
 # Copy run script
 COPY run.sh /run.sh

@@ -120,6 +120,10 @@ class FcmReceiver:
 
     def _start_listener_in_background(self):
         """Start FCM listener in a background thread with its own event loop"""
+        if self.credentials and self.credentials.get('fcm', {}).get('registration', {}).get('token') == 'dummy_token':
+            print("[FCMReceiver] Already using fallback Android ID. Skipping FCM registration retry.")
+            return self.credentials['gcm']['android_id']
+
         self._loop = asyncio.new_event_loop()
         self._loop_thread = threading.Thread(target=self._run_event_loop_in_thread, daemon=True)
         self._loop_thread.start()

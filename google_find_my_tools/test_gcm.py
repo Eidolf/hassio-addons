@@ -62,7 +62,12 @@ async def main():
     # Try 2: com.google.android.apps.adm + Certs
     for cert in CERTS:
         if await try_register("com.google.android.apps.adm", cert):
-            break
+            print("Finished com.google.android.apps.adm success")
+
+    # Try 3: com.google.android.gms + Certs
+    for cert in CERTS:
+        if await try_register("com.google.android.gms", cert):
+            print("Finished com.google.android.gms success")
             
 if __name__ == "__main__":
     asyncio.run(main())
