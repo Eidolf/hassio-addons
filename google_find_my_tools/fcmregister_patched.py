@@ -308,9 +308,8 @@ class FcmRegister:
         headers = {
             "x-firebase-client": hb_header,
             "x-goog-api-key": self.config.api_key,
-            # PATCH: Add missing headers for Android Client Verification
-            "X-Android-Package": "com.google.android.apps.adm",
-            "X-Android-Cert": "7934664F8684277765D0A1384077651817757361"
+            "X-Android-Package": self.config.bundle_id,
+            "X-Android-Cert": "38918a453d07199354f8b19af05ec6562ced5788",
         }
         payload = {
             "appId": self.config.app_id,
@@ -355,9 +354,8 @@ class FcmRegister:
             "Authorization": f"{AUTH_VERSION} {fcm_refresh_token}",
             "x-firebase-client": hb_header,
             "x-goog-api-key": self.config.api_key,
-            # PATCH: Add missing headers for Android Client Verification
-            "X-Android-Package": "com.google.android.apps.adm",
-            "X-Android-Cert": "7934664F8684277765D0A1384077651817757361"
+            "X-Android-Package": self.config.bundle_id,
+            "X-Android-Cert": "38918a453d07199354f8b19af05ec6562ced5788",
         }
         payload = {
             "installation": {
@@ -422,9 +420,8 @@ class FcmRegister:
         headers = {
             "x-goog-api-key": self.config.api_key,
             "x-goog-firebase-installations-auth": installation["token"],
-            # PATCH: Add missing headers for Android Client Verification
-            "X-Android-Package": "com.google.android.apps.adm",
-            "X-Android-Cert": "7934664F8684277765D0A1384077651817757361"
+            "X-Android-Package": self.config.bundle_id,
+            "X-Android-Cert": "38918a453d07199354f8b19af05ec6562ced5788",
         }
         # If vapid_key is the default do not send it here or it will error
         vapid_key = (

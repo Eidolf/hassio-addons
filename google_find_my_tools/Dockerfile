@@ -38,7 +38,8 @@ RUN apt-get update && apt-get install -y \
 # Install noVNC
 RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
     git clone https://github.com/novnc/websockify /opt/novnc/utils/websockify && \
-    ln -s /opt/novnc/vnc.html /opt/novnc/index.html
+    ln -s /opt/novnc/vnc.html /opt/novnc/index.html && \
+    sed -i 's/display: none;/display: block !important;/g' /opt/novnc/app/styles/base.css
 
 # Install Google Chrome Beta
 RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-linux-signing-key.gpg && \
@@ -60,6 +61,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy test script for FCM debugging
 COPY fcmregister_patched.py /app/Auth/firebase_messaging/fcmregister.py
+COPY fcmpushclient_patched.py /app/Auth/firebase_messaging/fcmpushclient.py
 COPY fcm_receiver_patched.py /app/Auth/fcm_receiver.py
 COPY test_gcm.py /app/test_gcm.py
 RUN pip install aiohttp
