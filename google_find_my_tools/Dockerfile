@@ -65,7 +65,7 @@ COPY test_gcm.py /app/test_gcm.py
 RUN pip install aiohttp
 
 # Prevent infinite loop in LocateTracker if FCM is blocked
-RUN sed -i 's/while result is None:/for _ in range(100):\\n        if result is not None: break/g' /app/NovaApi/ExecuteAction/LocateTracker/location_request.py
+RUN python3 -c "p='/app/NovaApi/ExecuteAction/LocateTracker/location_request.py'; d=open(p).read(); open(p,'w').write(d.replace('while result is None:', 'for _ in range(100):\\n        if result is not None: break'))"
 
 # Copy run script
 COPY run.sh /run.sh
