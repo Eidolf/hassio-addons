@@ -27,16 +27,19 @@ RUN apt-get update && apt-get install -y \
     libnspr4     lsb-release \
     xdg-utils \
     fluxbox \
+    autocutsel \
     x11vnc \
     net-tools \
     python3-websockify \
     python3-numpy \
+    xterm \
     --no-install-recommends
 
 # Install noVNC
 RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
     git clone https://github.com/novnc/websockify /opt/novnc/utils/websockify && \
-    ln -s /opt/novnc/vnc.html /opt/novnc/index.html
+    ln -s /opt/novnc/vnc.html /opt/novnc/index.html && \
+    sed -i 's/display: none;/display: block !important;/g' /opt/novnc/app/styles/base.css
 
 # Install Google Chrome Beta
 RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-linux-signing-key.gpg && \
@@ -55,6 +58,16 @@ RUN git clone https://github.com/Eidolf/GoogleFindMyTools.git .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy test script for FCM debugging
+COPY fcmregister_patched.py /app/Auth/firebase_messaging/fcmregister.py
+COPY fcmpushclient_patched.py /app/Auth/firebase_messaging/fcmpushclient.py
+COPY fcm_receiver_patched.py /app/Auth/fcm_receiver.py
+COPY test_gcm.py /app/test_gcm.py
+RUN pip install aiohttp
+
+# Prevent infinite loop in LocateTracker if FCM is blocked
+RUN python3 -c "p='/app/NovaApi/ExecuteAction/LocateTracker/location_request.py'; d=open(p).read(); open(p,'w').write(d.replace('while result is None:', 'for _ in range(100):\\n        if result is not None: break'))"
 
 # Copy run script
 COPY run.sh /run.sh
