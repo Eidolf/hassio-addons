@@ -1,0 +1,63 @@
+---
+# Turns a Renovate pin bump into an add-on release.
+#
+# Renovate rewrites the vaultwarden/server tag in the Dockerfile and nothing
+# else. Upstream did not need more: its main carries `version: dev` and the
+# hassio-addons release pipeline stamped the real number at publish time. That
+# pipeline cannot run from a fork, so this replaces it — after a pin lands on
+# main, the add-on version, changelog and README are brought in line and the
+# publish is started.
+#
+# Without this the image would be rebuilt under the version it already had,
+# and the add-on store would never offer an update.
+name: Stamp
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - vaultwarden/Dockerfile
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: stamp
+
+jobs:
+  stamp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bring the add-on version in line with the pin
+        id: bump
+        run: .github/scripts/bump-vaultwarden.sh
+
+      - name: Commit and push
+        id: commit
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          SHIPPED: ${{ steps.bump.outputs.shipped }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          ADDON_VERSION: ${{ steps.bump.outputs.addon_version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit \
+            -m "🔖 Release add-on ${ADDON_VERSION} with Vaultwarden ${VERSION}" \
+            -m "Vaultwarden ${SHIPPED} -> ${VERSION}, verified by CI on the pin bump." \
+            -- README.md vaultwarden/config.yaml vaultwarden/CHANGELOG.md
+          git push
+
+      # Pushing with GITHUB_TOKEN does not trigger other workflows, so the
+      # publish has to be asked for by name.
+      - name: Publish the add-on image
+        if: steps.commit.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yaml --ref "${{ github.ref_name }}"
