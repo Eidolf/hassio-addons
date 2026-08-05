@@ -102,7 +102,7 @@ newer ones use `.../supervisor/apps/data`, older ones `.../supervisor/addons/dat
 Discover both rather than assuming:
 
 ```sh
-for c in $(docker ps --filter name=addon_ --format '{{.Names}}'); do
+for c in $(docker ps --filter name=app_ --format '{{.Names}}'); do
   s=$(docker inspect "$c" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}')
   [ -n "$s" ] && { DATAROOT=$(dirname "$s"); break; }
 done
@@ -119,6 +119,8 @@ add-on (**DST**).
 > the data directory persists independently of the container.
 
 ### 5b. Copy the data
+> If $DATAROOT is no correctly set, it also work if you change the variable down 
+> in the script with the complete path like "/mnt/data/apps"
 
 Substitute your own slugs into `SRC` and `DST`:
 
