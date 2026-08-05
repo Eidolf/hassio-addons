@@ -120,7 +120,7 @@ add-on (**DST**).
 
 ### 5b. Copy the data
 > If $DATAROOT is no correctly set, it also work if you change the variable down 
-> in the script with the complete path like "/mnt/data/apps"
+> in the script with the complete path like "/mnt/data/supervisor/apps/data"
 
 Substitute your own slugs into `SRC` and `DST`:
 
