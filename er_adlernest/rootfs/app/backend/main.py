@@ -181,6 +181,15 @@ def get_recording_thumbnail(rec_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Thumbnail file missing")
     return FileResponse(thumb_full, media_type="image/jpeg")
 
+@app.get("/api/logo")
+def get_logo():
+    logo_path = "/er_adlernest/icon.png"
+    if not os.path.exists(logo_path):
+        logo_path = os.path.join(os.path.dirname(__file__), "../../../icon.png")
+    if os.path.exists(logo_path):
+        return FileResponse(logo_path, media_type="image/png")
+    raise HTTPException(status_code=404, detail="Logo not found")
+
 # Serve frontend build static files if present
 FRONTEND_DIR = "/app/frontend/dist"
 if os.path.exists(FRONTEND_DIR):
