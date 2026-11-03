@@ -34,3 +34,4 @@ RUN chmod +x /run.sh
 EXPOSE 8098
 
 CMD [ "/run.sh" ]
+

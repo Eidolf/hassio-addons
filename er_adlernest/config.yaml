@@ -61,3 +61,4 @@ schema:
       username: str?
       password: password?
       fps: int?
+

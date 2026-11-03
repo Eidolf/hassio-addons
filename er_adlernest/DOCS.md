@@ -38,3 +38,4 @@ samba_password: "my_secure_password"
 - `GET /api/recordings/{id}/stream`: Progressive video streaming.
 - `GET /api/recordings/{id}/thumbnail`: Video preview thumbnail.
 - `POST /api/archive/scan`: Trigger manual background indexing.
+

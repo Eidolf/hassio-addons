@@ -41,3 +41,4 @@ fi
 bashio::log.info "Starting ER-Adlernest backend on port 8098..."
 cd /app/backend
 exec python3 -m uvicorn main:app --host 0.0.0.0 --port 8098
+

@@ -144,3 +144,4 @@ def scan_directory(root_dir: str, thumb_dir: str = "/data/thumbnails"):
         db.close()
 
     return new_records
+
