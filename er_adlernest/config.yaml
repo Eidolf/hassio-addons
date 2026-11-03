@@ -1,5 +1,5 @@
 name: "ER-Adlernest"
-version: "1.0.2"
+version: "1.0.3"
 slug: "er_adlernest"
 description: "Your Eagle Eye for Home Assistant Surveillance - Modern CCTV live viewer, archive manager and NAS recording explorer."
 url: "https://github.com/Eidolf/hassio-addons/tree/main/er_adlernest"

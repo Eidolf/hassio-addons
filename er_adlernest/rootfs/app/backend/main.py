@@ -2,13 +2,14 @@ import os
 import json
 import logging
 import asyncio
+import urllib.request
+import urllib.error
 from typing import List, Optional
 from datetime import datetime
 
-import httpx
-from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, Response
+from fastapi.responses import FileResponse, StreamingResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
@@ -21,7 +22,7 @@ logger = logging.getLogger("adlernest")
 
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.0.2",
+    version="1.0.3",
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
@@ -125,7 +126,9 @@ def get_settings():
 @app.post("/api/settings")
 def save_settings(data: dict):
     if "storage_path" in data:
-        set_setting("storage_path", data["storage_path"].strip())
+        new_path = data["storage_path"].strip()
+        set_setting("storage_path", new_path)
+        logger.info(f"Storage path updated in database to: {new_path}")
     if "samba_server" in data:
         set_setting("samba_server", data["samba_server"].strip())
     if "samba_share" in data:
@@ -137,17 +140,22 @@ def save_settings(data: dict):
 # --- Directory & Folder Browser ---
 @app.get("/api/fs/browse")
 def browse_filesystem(path: str = Query("/media")):
-    safe_path = os.path.abspath(path.strip() or "/media")
+    cleaned = (path or "").strip()
+    if not cleaned:
+        cleaned = "/media"
+    
+    safe_path = os.path.abspath(cleaned)
     parent = os.path.dirname(safe_path) if safe_path != "/" else None
 
-    if not os.path.exists(safe_path):
-        # Fallback check parent or default /media
-        alt_path = "/media"
-        if safe_path != alt_path and os.path.exists(alt_path):
-            safe_path = alt_path
-            parent = "/"
-        else:
-            return {"current": safe_path, "parent": parent, "folders": [], "exists": False}
+    # Check if target directory exists
+    if not os.path.exists(safe_path) or not os.path.isdir(safe_path):
+        # Fallback to root mounts available in HA container
+        candidates = ["/media", "/share", "/data", "/"]
+        for c in candidates:
+            if os.path.exists(c) and os.path.isdir(c):
+                safe_path = c
+                parent = os.path.dirname(safe_path) if safe_path != "/" else None
+                break
 
     try:
         entries = os.scandir(safe_path)
@@ -155,28 +163,32 @@ def browse_filesystem(path: str = Query("/media")):
         folders.sort()
         return {"current": safe_path, "parent": parent, "folders": folders, "exists": True}
     except Exception as e:
+        logger.warning(f"Browse error for {safe_path}: {e}")
         return {"current": safe_path, "parent": parent, "folders": [], "error": str(e), "exists": False}
 
 # --- Home Assistant Native Integration: Entity Discovery & Proxy ---
 @app.get("/api/ha/cameras")
-async def list_homeassistant_cameras():
-    """Fetch camera entities directly from Home Assistant Supervisor / Core API."""
+def list_homeassistant_cameras():
+    """Fetch camera entities directly from Home Assistant Supervisor / Core API using urllib."""
     supervisor_token = os.getenv("SUPERVISOR_TOKEN")
     ha_url = "http://supervisor/core/api/states"
     
     if not supervisor_token:
-        # Return graceful mock/local discovery info
-        return {"error": "SUPERVISOR_TOKEN not set (non-HA test env)", "cameras": []}
+        logger.info("SUPERVISOR_TOKEN not present in container environment.")
+        return {"error": "SUPERVISOR_TOKEN not set", "cameras": []}
 
     try:
-        headers = {
-            "Authorization": f"Bearer {supervisor_token}",
-            "Content-Type": "application/json"
-        }
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(ha_url, headers=headers)
-            if resp.status_code == 200:
-                states = resp.json()
+        req = urllib.request.Request(
+            ha_url,
+            headers={
+                "Authorization": f"Bearer {supervisor_token}",
+                "Content-Type": "application/json"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 200:
+                body = response.read().decode("utf-8")
+                states = json.loads(body)
                 cams = []
                 for s in states:
                     eid = s.get("entity_id", "")
@@ -186,17 +198,16 @@ async def list_homeassistant_cameras():
                             "entity_id": eid,
                             "name": attrs.get("friendly_name", eid),
                             "state": s.get("state"),
-                            "access_token": attrs.get("access_token"),
                             "brand": attrs.get("brand", "Home Assistant Camera")
                         })
                 return {"cameras": cams}
-            return {"error": f"HA API status {resp.status_code}", "cameras": []}
+            return {"error": f"HA API status {response.status}", "cameras": []}
     except Exception as e:
         logger.warning(f"Error querying Home Assistant cameras: {e}")
         return {"error": str(e), "cameras": []}
 
 @app.get("/api/ha/camera_proxy/{entity_id}")
-async def proxy_ha_camera(entity_id: str):
+def proxy_ha_camera(entity_id: str):
     """Proxy live image snapshot from Home Assistant camera entity."""
     supervisor_token = os.getenv("SUPERVISOR_TOKEN")
     if not supervisor_token:
@@ -204,12 +215,16 @@ async def proxy_ha_camera(entity_id: str):
 
     url = f"http://supervisor/core/api/camera_proxy/{entity_id}"
     try:
-        headers = {"Authorization": f"Bearer {supervisor_token}"}
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200:
-                return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
-            raise HTTPException(status_code=resp.status_code, detail="HA Camera snapshot unavailable")
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": f"Bearer {supervisor_token}"}
+        )
+        with urllib.request.urlopen(req, timeout=6) as response:
+            content = response.read()
+            content_type = response.headers.get("Content-Type", "image/jpeg")
+            return Response(content=content, media_type=content_type)
+    except urllib.error.HTTPError as he:
+        raise HTTPException(status_code=he.code, detail=f"HA camera_proxy error: {he.reason}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -225,7 +240,14 @@ def list_cameras(db: Session = Depends(get_db)):
     return db.query(Camera).all()
 
 @app.post("/api/cameras")
-def create_or_update_camera(cam: dict, db: Session = Depends(get_db)):
+async def create_or_update_camera(request: Request, db: Session = Depends(get_db)):
+    try:
+        cam = await request.json()
+    except Exception as e:
+        raw_body = await request.body()
+        logger.error(f"Invalid JSON received in /api/cameras: {raw_body.decode('utf-8', errors='ignore')}")
+        raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {e}")
+
     cam_id = cam.get("id")
     camera = None
     if cam_id:
@@ -234,7 +256,7 @@ def create_or_update_camera(cam: dict, db: Session = Depends(get_db)):
         except Exception:
             pass
 
-    name = cam.get("name", "").strip()
+    name = str(cam.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Camera name is required")
 
@@ -245,17 +267,30 @@ def create_or_update_camera(cam: dict, db: Session = Depends(get_db)):
             db.add(camera)
 
     camera.name = name
-    camera.source_type = cam.get("source_type", "rtsp")
-    camera.stream_url = cam.get("stream_url", "")
-    camera.substream_url = cam.get("substream_url")
-    camera.ha_entity_id = cam.get("ha_entity_id")
-    camera.folder_mapping = cam.get("folder_mapping")
-    camera.fps = int(cam.get("fps", 15) or 15)
-    camera.enabled = cam.get("enabled", True)
+    camera.source_type = str(cam.get("source_type") or "rtsp").strip()
+    camera.stream_url = str(cam.get("stream_url") or "").strip()
+    camera.substream_url = str(cam.get("substream_url") or "").strip() or None
+    camera.ha_entity_id = str(cam.get("ha_entity_id") or "").strip() or None
+    camera.folder_mapping = str(cam.get("folder_mapping") or "").strip() or None
+    
+    fps_val = cam.get("fps")
+    try:
+        camera.fps = int(fps_val) if fps_val is not None else 15
+    except Exception:
+        camera.fps = 15
+        
+    camera.enabled = bool(cam.get("enabled", True))
     
     db.commit()
     db.refresh(camera)
-    return camera
+    return {
+        "id": camera.id,
+        "name": camera.name,
+        "source_type": camera.source_type,
+        "stream_url": camera.stream_url,
+        "ha_entity_id": camera.ha_entity_id,
+        "folder_mapping": camera.folder_mapping
+    }
 
 @app.delete("/api/cameras/{camera_id}")
 def delete_camera(camera_id: int, db: Session = Depends(get_db)):

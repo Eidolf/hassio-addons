@@ -29,13 +29,13 @@
     header { background: rgba(11, 17, 32, 0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--card-border); padding: 0.75rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
     .logo-container { display: flex; align-items: center; gap: 14px; }
     .logo-img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1.5px solid var(--accent); box-shadow: 0 0 14px var(--accent-glow); }
-    .brand-title { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; text-transform: uppercase; font-feature-settings: "tnum"; }
+    .brand-title { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px; text-transform: uppercase; }
     .brand-title span { color: var(--accent); text-shadow: 0 0 10px rgba(6, 182, 212, 0.5); }
     .tagline { font-size: 0.75rem; color: var(--text-muted); letter-spacing: 0.5px; font-weight: 500; }
 
     /* Navigation Tactical Bar */
     .nav-tabs { display: flex; gap: 8px; background: rgba(15, 23, 42, 0.9); padding: 0.6rem 2rem; border-bottom: 1px solid var(--card-border); backdrop-filter: blur(8px); }
-    .nav-btn { background: transparent; border: 1px solid transparent; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; padding: 7px 16px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+    .nav-btn { background: transparent; border: 1px solid transparent; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; padding: 7px 16px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
     .nav-btn:hover { color: #fff; background: rgba(255,255,255,0.04); border-color: var(--card-border); }
     .nav-btn.active { color: #fff; background: var(--primary); border-color: var(--accent); box-shadow: 0 0 12px rgba(37, 99, 235, 0.4); }
 
@@ -100,10 +100,14 @@
     .modal-video-wrapper video { width: 100%; height: 100%; max-height: 500px; }
 
     /* Interactive Directory Tree Explorer */
-    .folder-chip { display: inline-flex; align-items: center; gap: 6px; background: #070c14; border: 1px solid var(--card-border); border-radius: 6px; padding: 7px 14px; margin: 4px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
-    .folder-chip:hover { border-color: var(--accent); color: var(--accent); background: rgba(6, 182, 212, 0.08); }
-    .folder-chip-cam { border-color: #2563eb; }
-    .folder-chip-cam:hover { border-color: #38bdf8; color: #38bdf8; }
+    .folder-item { display: flex; justify-content: space-between; align-items: center; background: #070c14; border: 1px solid var(--card-border); border-radius: 6px; padding: 8px 14px; margin-bottom: 6px; transition: all 0.2s; }
+    .folder-item:hover { border-color: var(--accent); background: rgba(6, 182, 212, 0.05); }
+    .folder-name-btn { background: transparent; border: none; color: #f1f5f9; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+    .folder-name-btn:hover { color: var(--accent); }
+    .btn-use-path { background: #2563eb; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.78rem; cursor: pointer; margin-right: 6px; }
+    .btn-use-path:hover { background: #1d4ed8; }
+    .btn-map-cam { background: #0e7490; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.78rem; cursor: pointer; }
+    .btn-map-cam:hover { background: #0891b2; }
   </style>
 </head>
 <body>
@@ -144,8 +148,8 @@
         <div class="stat-val" id="stat-cameras">0</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Indexer Engine Status</div>
-        <div class="stat-val" style="font-size: 1.15rem; color: #10b981;" id="stat-indexer">Idle</div>
+        <div class="stat-label">Active Storage Path</div>
+        <div class="stat-val" style="font-size: 0.95rem; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" id="stat-active-path">/media</div>
       </div>
     </div>
 
@@ -193,10 +197,10 @@
 
     <!-- Storage & Settings Tab -->
     <div id="tab-settings" style="display: none;">
-      <div class="stat-card" style="max-width: 850px;">
+      <div class="stat-card" style="max-width: 900px;">
         <h3 style="margin-bottom: 0.5rem; color: var(--accent);"><i class="bi bi-hdd-network"></i> Archive Storage & Directory Browser</h3>
         <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
-          Configure the root directory where your cameras upload video files. You can explore subfolders and map them directly with one click.
+          Configure the root directory where your cameras upload video files. You can browse all folders and apply the full path directly.
         </p>
         
         <div class="form-group">
@@ -204,20 +208,24 @@
           <div style="display: flex; gap: 10px;">
             <input type="text" id="settingStoragePath" placeholder="/media/Kamera_Dateien" />
             <button class="btn-secondary" onclick="browseDirectory()"><i class="bi bi-folder2-open"></i> Browse</button>
+            <button class="btn-action" onclick="saveStorageSettings()"><i class="bi bi-check2"></i> Save & Apply</button>
           </div>
           <div class="form-hint">E.g. <code>/media/Kamera_Dateien</code>, <code>/share/cctv</code>, or <code>/mnt/nas_recordings</code></div>
         </div>
 
         <div id="folderBrowserContainer" style="display:none; background: #070c14; padding: 1.25rem; border-radius: 6px; margin-bottom: 1.25rem; border: 1px solid var(--card-border);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <div style="font-size: 0.85rem; color: var(--accent); font-family: monospace;" id="browserCurrentPath">/media</div>
-            <button class="btn-secondary" style="padding: 3px 10px; font-size: 0.78rem;" id="btnFolderUp" onclick="navigateUp()"><i class="bi bi-arrow-up"></i> Parent Folder</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div>
+              <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Browsing:</span>
+              <span style="font-size: 0.9rem; color: var(--accent); font-family: monospace; font-weight: bold; margin-left: 6px;" id="browserCurrentPath">/media</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn-secondary" style="padding: 4px 10px; font-size: 0.78rem;" id="btnFolderUp" onclick="navigateUp()"><i class="bi bi-arrow-up"></i> Up</button>
+              <button class="btn-action" style="padding: 4px 10px; font-size: 0.78rem;" onclick="applyCurrentBrowserPath()"><i class="bi bi-check-circle"></i> Use This Folder</button>
+            </div>
           </div>
-          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Click a folder to navigate into it, or click "Map as Camera" to create a camera mapping:</div>
-          <div id="folderChipList" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+          <div id="folderChipList" style="display: flex; flex-direction: column;"></div>
         </div>
-
-        <button class="btn-action" onclick="saveStorageSettings()"><i class="bi bi-check2"></i> Save Storage Path</button>
       </div>
     </div>
   </main>
@@ -233,8 +241,8 @@
         <div class="form-group">
           <label>Source Type:</label>
           <select id="camSourceType" onchange="toggleSourceTypeFields()">
-            <option value="ha_camera">Home Assistant Camera Entity (Direct Integration)</option>
             <option value="reolink">Reolink (RTSP / Stream URL)</option>
+            <option value="ha_camera">Home Assistant Camera Entity (Direct Integration)</option>
             <option value="rtsp">Generic RTSP Stream</option>
             <option value="onvif">ONVIF Source</option>
             <option value="mjpeg">MJPEG Stream</option>
@@ -242,12 +250,12 @@
         </div>
 
         <!-- HA Entity Picker -->
-        <div class="form-group" id="groupHaEntity">
+        <div class="form-group" id="groupHaEntity" style="display: none;">
           <label>Select Home Assistant Camera Entity:</label>
           <select id="camHaEntity" onchange="onHaEntitySelected()">
-            <option value="">-- Select Home Assistant Camera --</option>
+            <option value="">-- Scanning Home Assistant entities... --</option>
           </select>
-          <div class="form-hint">Automatically reads existing camera entities registered in your Home Assistant instance.</div>
+          <div class="form-hint">Automatically reads existing camera entities registered in Home Assistant.</div>
         </div>
 
         <div class="form-group">
@@ -255,7 +263,7 @@
           <input type="text" id="camName" placeholder="e.g. Holzhuette or Einfahrt" />
         </div>
 
-        <div class="form-group" id="groupStreamUrl" style="display: none;">
+        <div class="form-group" id="groupStreamUrl">
           <label>Main Stream URL:</label>
           <input type="text" id="camStreamUrl" placeholder="rtsp://admin:pass@192.168.1.100:554/h264Preview_01_main" />
         </div>
@@ -292,6 +300,7 @@
   <script>
     let appCameras = [];
     let haCamerasList = [];
+    let browserCurrentPath = '/media';
     let browserParentPath = null;
 
     async function fetchStatus() {
@@ -302,8 +311,7 @@
         document.getElementById('stat-cameras').textContent = data.statistics.total_cameras;
         const mb = (data.statistics.total_storage_bytes / (1024 * 1024)).toFixed(1);
         document.getElementById('stat-storage').textContent = `${mb} MB`;
-        document.getElementById('stat-indexer').textContent = data.is_scanning ? "Scanning..." : "Active / Ready";
-        document.getElementById('stat-indexer').style.color = data.is_scanning ? "#38bdf8" : "#10b981";
+        document.getElementById('stat-active-path').textContent = data.storage_path;
         
         if (!document.getElementById('settingStoragePath').value) {
           document.getElementById('settingStoragePath').value = data.storage_path;
@@ -334,7 +342,7 @@
           <div style="grid-column: 1/-1; padding: 3.5rem 2rem; text-align: center; color: var(--text-muted); background: var(--card-bg); border-radius: 8px; border: 1px dashed var(--card-border);">
             <i class="bi bi-camera-video-off" style="font-size: 3rem; color: var(--accent); display: block; margin-bottom: 1rem;"></i>
             <h3 style="color: #fff;">Tactical Matrix Empty</h3>
-            <p style="margin: 0.5rem 0 1.5rem 0;">No cameras added yet. Import camera entities from Home Assistant or configure RTSP feeds.</p>
+            <p style="margin: 0.5rem 0 1.5rem 0;">No cameras configured. Add your Reolink streams or select Home Assistant camera entities.</p>
             <button class="btn-action" onclick="openAddCameraModal()"><i class="bi bi-plus-lg"></i> Add First Camera</button>
           </div>
         `;
@@ -356,7 +364,7 @@
           viewContent = `
             <div style="text-align: center; color: #475569;">
               <i class="bi bi-broadcast-pin" style="font-size: 3rem; display: block; margin-bottom: 8px;"></i>
-              <div style="font-family: monospace; font-size: 0.8rem;">RTSP FEED ACTIVE</div>
+              <div style="font-family: monospace; font-size: 0.8rem;">STREAM CONFIGURED</div>
             </div>
             <div class="cam-crosshair"></div>
           `;
@@ -433,7 +441,7 @@
         document.getElementById('archiveCountText').textContent = `${data.total || 0} RECORDINGS FOUND`;
 
         if (!data.items || data.items.length === 0) {
-          grid.innerHTML = '<div style="color: var(--text-muted); grid-column: 1/-1; padding: 3rem; text-align: center; background: var(--card-bg); border-radius: 8px;"><i class="bi bi-film" style="font-size: 2.5rem; display:block; margin-bottom: 10px;"></i>No recordings found in the selected folder. Check path in Storage & System or click \"Scan Archive\".</div>';
+          grid.innerHTML = '<div style="color: var(--text-muted); grid-column: 1/-1; padding: 3rem; text-align: center; background: var(--card-bg); border-radius: 8px;"><i class="bi bi-film" style="font-size: 2.5rem; display:block; margin-bottom: 10px;"></i>No recordings found in the active folder. Select your recordings folder under "Storage & System" and click "Scan Archive".</div>';
           return;
         }
 
@@ -527,7 +535,7 @@
       document.getElementById('camName').value = "";
       document.getElementById('camFolderMapping').value = "";
       document.getElementById('camStreamUrl').value = "";
-      document.getElementById('camSourceType').value = "ha_camera";
+      document.getElementById('camSourceType').value = "reolink";
       toggleSourceTypeFields();
       document.getElementById('cameraModal').style.display = 'flex';
     }
@@ -556,9 +564,17 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(payload)
         });
+        const resText = await res.text();
+        let data;
+        try {
+          data = JSON.parse(resText);
+        } catch(err) {
+          alert("Server error response: " + resText);
+          return;
+        }
+        
         if (!res.ok) {
-          const err = await res.json();
-          alert("Failed to save camera: " + (err.detail || JSON.stringify(err)));
+          alert("Failed to save camera: " + (data.detail || JSON.stringify(data)));
           return;
         }
         closeCameraModal();
@@ -584,50 +600,63 @@
       const list = document.getElementById('folderChipList');
       const pathLabel = document.getElementById('browserCurrentPath');
       container.style.display = 'block';
-      list.innerHTML = '<span style="color: var(--text-muted); font-size: 0.85rem;">Loading directory...</span>';
+      list.innerHTML = '<span style="color: var(--text-muted); font-size: 0.85rem; padding: 8px;">Loading directory contents...</span>';
 
       try {
         const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentPath)}`);
         const data = await res.json();
+        browserCurrentPath = data.current;
         browserParentPath = data.parent;
         pathLabel.textContent = data.current;
-        document.getElementById('settingStoragePath').value = data.current;
         document.getElementById('btnFolderUp').style.display = data.parent ? 'inline-flex' : 'none';
 
         list.innerHTML = '';
         if (data.folders && data.folders.length > 0) {
           data.folders.forEach(f => {
-            const folderFullPath = data.current.replace(/\/$/, '') + '/' + f;
+            const folderFullPath = (data.current === '/' ? '' : data.current) + '/' + f;
             
-            const chip = document.createElement('span');
-            chip.className = 'folder-chip';
-            chip.innerHTML = `<i class="bi bi-folder-fill" style="color:var(--accent);"></i> ${f}`;
-            chip.title = "Click to open folder";
-            chip.onclick = () => browseDirectory(folderFullPath);
+            const item = document.createElement('div');
+            item.className = 'folder-item';
 
-            const mapBtn = document.createElement('span');
-            mapBtn.className = 'folder-chip folder-chip-cam';
-            mapBtn.innerHTML = `<i class="bi bi-plus-circle-fill"></i> Map as Camera`;
-            mapBtn.title = `Map '${f}' folder as camera`;
-            mapBtn.onclick = () => {
-              openAddCameraModal();
-              document.getElementById('camName').value = f;
-              document.getElementById('camFolderMapping').value = f;
-            };
-
-            const wrapper = document.createElement('div');
-            wrapper.style.display = 'inline-flex';
-            wrapper.style.margin = '4px';
-            wrapper.appendChild(chip);
-            wrapper.appendChild(mapBtn);
-            list.appendChild(wrapper);
+            item.innerHTML = `
+              <button class="folder-name-btn" onclick="browseDirectory('${folderFullPath}')" title="Open folder">
+                <i class="bi bi-folder-fill" style="color:var(--accent); font-size: 1.1rem;"></i> ${f}
+              </button>
+              <div>
+                <button class="btn-use-path" onclick="useSpecificPath('${folderFullPath}')" title="Set this exact path as recordings root">
+                  <i class="bi bi-check2"></i> Use Path
+                </button>
+                <button class="btn-map-cam" onclick="mapFolderAsCamera('${f}')" title="Create camera with folder mapping">
+                  <i class="bi bi-camera-video"></i> Map Camera
+                </button>
+              </div>
+            `;
+            list.appendChild(item);
           });
         } else {
-          list.innerHTML = `<span style="color: var(--text-muted); font-size: 0.85rem;">No subfolders found in ${data.current}.</span>`;
+          list.innerHTML = `<span style="color: var(--text-muted); font-size: 0.85rem; padding: 8px;">No subfolders found inside ${data.current}.</span>`;
         }
       } catch(e) {
-        list.innerHTML = `<span style="color: var(--danger); font-size: 0.85rem;">Browse error: ${e}</span>`;
+        list.innerHTML = `<span style="color: var(--danger); font-size: 0.85rem; padding: 8px;">Browse error: ${e}</span>`;
       }
+    }
+
+    function useSpecificPath(fullPath) {
+      document.getElementById('settingStoragePath').value = fullPath;
+      saveStorageSettings();
+    }
+
+    function applyCurrentBrowserPath() {
+      if (browserCurrentPath) {
+        document.getElementById('settingStoragePath').value = browserCurrentPath;
+        saveStorageSettings();
+      }
+    }
+
+    function mapFolderAsCamera(folderName) {
+      openAddCameraModal();
+      document.getElementById('camName').value = folderName;
+      document.getElementById('camFolderMapping').value = folderName;
     }
 
     function navigateUp() {
@@ -638,14 +667,22 @@
 
     async function saveStorageSettings() {
       const path = document.getElementById('settingStoragePath').value.trim();
+      if (!path) {
+        alert("Please enter a valid path");
+        return;
+      }
       try {
-        await fetch('/api/settings', {
+        const res = await fetch('/api/settings', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ storage_path: path })
         });
-        alert("Storage path saved! Scanning archive...");
+        const data = await res.json();
+        alert("Storage path saved: " + data.storage_path + "\nScanning archive in background...");
+        document.getElementById('settingStoragePath').value = data.storage_path;
+        document.getElementById('stat-active-path').textContent = data.storage_path;
         triggerScan();
+        browseDirectory(data.storage_path);
       } catch(e) {
         alert("Failed to save settings: " + e);
       }
@@ -654,11 +691,10 @@
     async function triggerScan() {
       try {
         await fetch('/api/archive/scan', { method: 'POST' });
-        document.getElementById('stat-indexer').textContent = "Scanning...";
         setTimeout(() => {
           fetchStatus();
           loadRecordings();
-        }, 2000);
+        }, 1500);
       } catch(e) {
         alert('Scan trigger failed');
       }
