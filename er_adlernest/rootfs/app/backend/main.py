@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
-from models import get_db, Camera, Recording, AppSetting, get_setting, set_setting, SessionLocal
+from models import get_db, Camera, Recording, AppSetting, get_setting, set_setting, SessionLocal, run_migrations
 from indexer import scan_directory_sync
 
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +21,7 @@ logger = logging.getLogger("adlernest")
 
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.0.0",
+    version="1.0.2",
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
@@ -38,12 +38,10 @@ SCAN_TASK = None
 IS_SCANNING = False
 
 def get_configured_storage_path():
-    # 1. First priority: UI Setting saved in database
     db_path = get_setting("storage_path", "").strip()
     if db_path:
         return db_path
     
-    # 2. Add-on options.json fallback
     options_file = "/data/options.json"
     if os.path.exists(options_file):
         try:
@@ -55,7 +53,6 @@ def get_configured_storage_path():
         except Exception:
             pass
             
-    # 3. Environment or default
     return os.getenv("RECORDINGS_PATH", "/media")
 
 async def run_scan_async():
@@ -73,19 +70,18 @@ async def run_scan_async():
         IS_SCANNING = False
 
 async def periodic_scanner():
-    # Wait 10 seconds after server startup before initial background scan
-    await asyncio.sleep(10)
+    await asyncio.sleep(15)
     while True:
         try:
             await run_scan_async()
         except Exception as e:
             logger.error(f"Periodic scanner error: {e}")
-        # Run every 5 minutes
         await asyncio.sleep(300)
 
 @app.on_event("startup")
 async def startup_event():
     global SCAN_TASK
+    run_migrations()
     SCAN_TASK = asyncio.create_task(periodic_scanner())
 
 @app.on_event("shutdown")
@@ -138,20 +134,28 @@ def save_settings(data: dict):
         set_setting("samba_username", data["samba_username"].strip())
     return {"message": "Settings saved successfully", "storage_path": get_configured_storage_path()}
 
-# --- Directory & Folder Browser for UI Folder Picker ---
+# --- Directory & Folder Browser ---
 @app.get("/api/fs/browse")
 def browse_filesystem(path: str = Query("/media")):
-    safe_path = os.path.abspath(path)
-    if not os.path.exists(safe_path) or not os.path.isdir(safe_path):
-        return {"current": safe_path, "folders": [], "exists": False}
+    safe_path = os.path.abspath(path.strip() or "/media")
+    parent = os.path.dirname(safe_path) if safe_path != "/" else None
+
+    if not os.path.exists(safe_path):
+        # Fallback check parent or default /media
+        alt_path = "/media"
+        if safe_path != alt_path and os.path.exists(alt_path):
+            safe_path = alt_path
+            parent = "/"
+        else:
+            return {"current": safe_path, "parent": parent, "folders": [], "exists": False}
+
     try:
         entries = os.scandir(safe_path)
         folders = [e.name for e in entries if e.is_dir() and not e.name.startswith(".")]
         folders.sort()
-        parent = os.path.dirname(safe_path) if safe_path != "/" else None
         return {"current": safe_path, "parent": parent, "folders": folders, "exists": True}
     except Exception as e:
-        return {"current": safe_path, "folders": [], "error": str(e)}
+        return {"current": safe_path, "parent": parent, "folders": [], "error": str(e), "exists": False}
 
 # --- Home Assistant Native Integration: Entity Discovery & Proxy ---
 @app.get("/api/ha/cameras")
@@ -159,15 +163,17 @@ async def list_homeassistant_cameras():
     """Fetch camera entities directly from Home Assistant Supervisor / Core API."""
     supervisor_token = os.getenv("SUPERVISOR_TOKEN")
     ha_url = "http://supervisor/core/api/states"
+    
     if not supervisor_token:
-        return {"error": "SUPERVISOR_TOKEN not set", "cameras": []}
+        # Return graceful mock/local discovery info
+        return {"error": "SUPERVISOR_TOKEN not set (non-HA test env)", "cameras": []}
 
     try:
         headers = {
             "Authorization": f"Bearer {supervisor_token}",
             "Content-Type": "application/json"
         }
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=4.0) as client:
             resp = await client.get(ha_url, headers=headers)
             if resp.status_code == 200:
                 states = resp.json()
@@ -181,7 +187,7 @@ async def list_homeassistant_cameras():
                             "name": attrs.get("friendly_name", eid),
                             "state": s.get("state"),
                             "access_token": attrs.get("access_token"),
-                            "brand": attrs.get("brand", "Generic")
+                            "brand": attrs.get("brand", "Home Assistant Camera")
                         })
                 return {"cameras": cams}
             return {"error": f"HA API status {resp.status_code}", "cameras": []}
@@ -199,7 +205,7 @@ async def proxy_ha_camera(entity_id: str):
     url = f"http://supervisor/core/api/camera_proxy/{entity_id}"
     try:
         headers = {"Authorization": f"Bearer {supervisor_token}"}
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=6.0) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code == 200:
                 return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
@@ -223,17 +229,22 @@ def create_or_update_camera(cam: dict, db: Session = Depends(get_db)):
     cam_id = cam.get("id")
     camera = None
     if cam_id:
-        camera = db.query(Camera).filter(Camera.id == cam_id).first()
+        try:
+            camera = db.query(Camera).filter(Camera.id == int(cam_id)).first()
+        except Exception:
+            pass
+
+    name = cam.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Camera name is required")
 
     if not camera:
-        # Check by name
-        name = cam.get("name", "Camera").strip()
         camera = db.query(Camera).filter(Camera.name == name).first()
         if not camera:
             camera = Camera(name=name)
             db.add(camera)
 
-    camera.name = cam.get("name", camera.name).strip()
+    camera.name = name
     camera.source_type = cam.get("source_type", "rtsp")
     camera.stream_url = cam.get("stream_url", "")
     camera.substream_url = cam.get("substream_url")
@@ -307,11 +318,9 @@ def get_recording_thumbnail(rec_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/logo")
 def get_logo():
-    logo_path = "/er_adlernest/icon.png"
-    if not os.path.exists(logo_path):
-        logo_path = os.path.join(os.path.dirname(__file__), "../../../icon.png")
-    if os.path.exists(logo_path):
-        return FileResponse(logo_path, media_type="image/png")
+    for p in ["/app/frontend/dist/icon.png", "/er_adlernest/icon.png", os.path.join(os.path.dirname(__file__), "../../../icon.png")]:
+        if os.path.exists(p):
+            return FileResponse(p, media_type="image/png")
     raise HTTPException(status_code=404, detail="Logo not found")
 
 # Serve frontend static assets

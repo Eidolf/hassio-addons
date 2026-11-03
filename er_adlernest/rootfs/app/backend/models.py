@@ -1,10 +1,13 @@
 import os
 import json
-import asyncio
+import sqlite3
+import logging
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, create_engine, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, create_engine, Text, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+logger = logging.getLogger("adlernest.models")
 
 DB_PATH = os.getenv("DB_PATH", "/data/db/adlernest.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -52,6 +55,31 @@ class Recording(Base):
 engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
 Base.metadata.create_all(bind=engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def run_migrations():
+    """Ensure older DB schemas are upgraded with missing columns (e.g. ha_entity_id, folder_mapping)."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check columns of cameras table
+        cursor.execute("PRAGMA table_info(cameras);")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if columns:
+            if "ha_entity_id" not in columns:
+                logger.info("Migrating DB: Adding ha_entity_id column to cameras")
+                cursor.execute("ALTER TABLE cameras ADD COLUMN ha_entity_id VARCHAR(200);")
+            if "folder_mapping" not in columns:
+                logger.info("Migrating DB: Adding folder_mapping column to cameras")
+                cursor.execute("ALTER TABLE cameras ADD COLUMN folder_mapping VARCHAR(255);")
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Migration error: {e}")
+
+# Run automatic schema migration on import
+run_migrations()
 
 def get_db():
     db = SessionLocal()
