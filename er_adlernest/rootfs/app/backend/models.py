@@ -3,8 +3,7 @@ import json
 import asyncio
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, create_engine
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, create_engine, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DB_PATH = os.getenv("DB_PATH", "/data/db/adlernest.db")
@@ -12,14 +11,22 @@ os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 Base = declarative_base()
 
+class AppSetting(Base):
+    __tablename__ = "settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)
+
 class Camera(Base):
     __tablename__ = "cameras"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, nullable=False)
-    source_type = Column(String(50), default="rtsp")  # rtsp, reolink, ha_camera, onvif, mjpeg
-    stream_url = Column(String(500), nullable=False)
+    source_type = Column(String(50), default="rtsp")  # ha_camera, rtsp, reolink, onvif, mjpeg
+    stream_url = Column(String(500), nullable=True)
     substream_url = Column(String(500), nullable=True)
+    ha_entity_id = Column(String(200), nullable=True) # e.g. camera.driveway
+    folder_mapping = Column(String(255), nullable=True) # Subfolder name inside storage, e.g. "Holzhuette"
     fps = Column(Integer, default=15)
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -53,3 +60,23 @@ def get_db():
     finally:
         db.close()
 
+def get_setting(key: str, default: str = "") -> str:
+    db = SessionLocal()
+    try:
+        setting = db.query(AppSetting).filter(AppSetting.key == key).first()
+        return setting.value if setting else default
+    finally:
+        db.close()
+
+def set_setting(key: str, value: str):
+    db = SessionLocal()
+    try:
+        setting = db.query(AppSetting).filter(AppSetting.key == key).first()
+        if setting:
+            setting.value = value
+        else:
+            setting = AppSetting(key=key, value=value)
+            db.add(setting)
+        db.commit()
+    finally:
+        db.close()
