@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ER-Adlernest - Eagle Eye Surveillance</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --primary: #2563eb;
+      --accent: #06b6d4;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg-dark); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; }
+    
+    /* Header */
+    header { background: #0b1120; border-bottom: 1px solid var(--card-border); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+    .logo-container { display: flex; align-items: center; gap: 12px; }
+    .logo-svg { width: 36px; height: 36px; fill: var(--accent); }
+    .brand-title { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.5px; }
+    .brand-title span { color: var(--accent); }
+    .tagline { font-size: 0.8rem; color: var(--text-muted); }
+
+    /* Nav tabs */
+    .nav-tabs { display: flex; gap: 8px; background: #0f172a; padding: 0.75rem 2rem; border-bottom: 1px solid var(--card-border); }
+    .nav-btn { background: transparent; border: none; color: var(--text-muted); font-size: 0.95rem; font-weight: 600; padding: 8px 16px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+    .nav-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .nav-btn.active { color: #fff; background: var(--primary); }
+
+    /* Main Container */
+    main { padding: 1.5rem 2rem; flex: 1; max-width: 1600px; width: 100%; margin: 0 auto; }
+    .stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem 1.25rem; }
+    .stat-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
+    .stat-val { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+
+    /* Grid Layouts */
+    .camera-grid { display: grid; gap: 1rem; }
+    .grid-1 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .grid-6 { grid-template-columns: repeat(3, 1fr); }
+
+    /* Cam Cards */
+    .cam-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden; position: relative; }
+    .cam-header { padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); }
+    .cam-view { height: 260px; background: #000; display: flex; align-items: center; justify-content: center; position: relative; }
+    .cam-badge { position: absolute; top: 10px; right: 10px; background: rgba(239, 68, 68, 0.85); color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+
+    /* Archive Grid */
+    .archive-filters { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border); }
+    .filter-group { display: flex; align-items: center; gap: 8px; }
+    .archive-filters select, .archive-filters input { background: #0f172a; border: 1px solid var(--card-border); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 0.9rem; }
+    .btn-action { background: var(--primary); color: #fff; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .btn-action:hover { background: #1d4ed8; }
+
+    .rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+    .rec-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; cursor: pointer; transition: transform 0.2s; }
+    .rec-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .rec-thumb { height: 160px; background: #090e17; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+    .rec-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .rec-meta { padding: 0.75rem 1rem; font-size: 0.85rem; }
+    .rec-tag { display: inline-block; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-top: 4px; background: #334155; }
+    .tag-person { background: #0284c7; }
+    .tag-vehicle { background: #16a34a; }
+    .tag-motion { background: #d97706; }
+
+    /* Modal Player */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-box { background: var(--card-bg); width: 90%; max-width: 900px; border-radius: 8px; border: 1px solid var(--card-border); overflow: hidden; }
+    .modal-header { padding: 1rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--card-border); }
+    .modal-video-wrapper { background: #000; height: 500px; display: flex; align-items: center; justify-content: center; }
+    .modal-video-wrapper video { width: 100%; height: 100%; max-height: 500px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo-container">
+      <svg class="logo-svg" viewBox="0 0 100 100">
+        <polygon points="50,10 90,40 70,90 30,90 10,40" fill="#0f172a" stroke="#06b6d4" stroke-width="4"/>
+        <polygon points="50,20 75,45 60,80 40,80 25,45" fill="#2563eb" opacity="0.8"/>
+        <circle cx="50" cy="50" r="16" fill="#0f172a" stroke="#06b6d4" stroke-width="4"/>
+        <circle cx="50" cy="50" r="7" fill="#06b6d4"/>
+      </svg>
+      <div>
+        <div class="brand-title">ER-<span>Adlernest</span></div>
+        <div class="tagline">Your Eagle Eye for Home Assistant Surveillance</div>
+      </div>
+    </div>
+    <div>
+      <button class="btn-action" onclick="triggerScan()"><i class="bi bi-arrow-repeat"></i> Scan NAS Archive</button>
+    </div>
+  </header>
+
+  <nav class="nav-tabs">
+    <button class="nav-btn active" onclick="switchTab('live')"><i class="bi bi-grid-3x3-gap-fill"></i> Live View</button>
+    <button class="nav-btn" onclick="switchTab('archive')"><i class="bi bi-collection-play-fill"></i> Video Archive</button>
+    <button class="nav-btn" onclick="switchTab('status')"><i class="bi bi-info-circle-fill"></i> System & NAS Status</button>
+  </nav>
+
+  <main>
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-label">Total Recordings</div>
+        <div class="stat-val" id="stat-recordings">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Indexed Storage</div>
+        <div class="stat-val" id="stat-storage">0 MB</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active Cameras</div>
+        <div class="stat-val" id="stat-cameras">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Storage Status</div>
+        <div class="stat-val" style="font-size: 1.1rem; color: #10b981;" id="stat-nas">Connected</div>
+      </div>
+    </div>
+
+    <!-- Live View Tab -->
+    <div id="tab-live">
+      <div class="camera-grid grid-2" id="cameraGrid">
+        <div class="cam-card">
+          <div class="cam-header">
+            <span><strong>Driveway (Reolink 4K PoE)</strong></span>
+            <span class="cam-badge"><i class="bi bi-record-circle"></i> LIVE</span>
+          </div>
+          <div class="cam-view">
+            <i class="bi bi-camera-video" style="font-size: 3rem; color: #475569;"></i>
+          </div>
+        </div>
+        <div class="cam-card">
+          <div class="cam-header">
+            <span><strong>Front Doorbell (Reolink Doorbell)</strong></span>
+            <span class="cam-badge"><i class="bi bi-record-circle"></i> LIVE</span>
+          </div>
+          <div class="cam-view">
+            <i class="bi bi-camera-video" style="font-size: 3rem; color: #475569;"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Archive Tab -->
+    <div id="tab-archive" style="display: none;">
+      <div class="archive-filters">
+        <div class="filter-group">
+          <label>Camera:</label>
+          <select id="filterCamera" onchange="loadRecordings()">
+            <option value="">All Cameras</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Event Type:</label>
+          <select id="filterEvent" onchange="loadRecordings()">
+            <option value="">All Events</option>
+            <option value="motion">Motion</option>
+            <option value="person">Person</option>
+            <option value="vehicle">Vehicle</option>
+            <option value="regular">Regular</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="rec-grid" id="recordingsGrid">
+        <!-- Recordings rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- System Status Tab -->
+    <div id="tab-status" style="display: none;">
+      <div class="stat-card" style="margin-bottom: 1rem;">
+        <h3 style="margin-bottom: 1rem; color: var(--accent);">Storage & Indexing Configuration</h3>
+        <p><strong>Storage Path:</strong> <span id="conf-path">/share/er_adlernest/recordings</span></p>
+        <p style="margin-top: 0.5rem;"><strong>Samba/CIFS Mount:</strong> <span id="conf-mount">Active (/mnt/nas_recordings)</span></p>
+        <p style="margin-top: 0.5rem;"><strong>Auto Scan Interval:</strong> Every 5 minutes</p>
+        <p style="margin-top: 0.5rem;"><strong>Frigate Compatibility:</strong> Architecture Ready (Phase 2 Roadmap)</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Video Modal -->
+  <div class="modal-overlay" id="videoModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h4 id="modalTitle">Playback</h4>
+        <button class="btn-action" onclick="closeModal()"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-video-wrapper">
+        <video id="player" controls autoplay></video>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function fetchStats() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        document.getElementById('stat-recordings').textContent = data.statistics.total_recordings;
+        document.getElementById('stat-cameras').textContent = data.statistics.total_cameras;
+        const mb = (data.statistics.total_storage_bytes / (1024 * 1024)).toFixed(1);
+        document.getElementById('stat-storage').textContent = `${mb} MB`;
+        document.getElementById('conf-path').textContent = data.storage_path;
+        document.getElementById('stat-nas').textContent = data.storage_mounted ? "Connected" : "Local / Offline";
+      } catch(e) {
+        console.error("Failed to load status:", e);
+      }
+    }
+
+    async function loadRecordings() {
+      const cam = document.getElementById('filterCamera').value;
+      const event = document.getElementById('filterEvent').value;
+      const url = new URL('/api/recordings', window.location.origin);
+      if (cam) url.searchParams.append('camera', cam);
+      if (event) url.searchParams.append('event_type', event);
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        const grid = document.getElementById('recordingsGrid');
+        grid.innerHTML = '';
+
+        if (!data.items || data.items.length === 0) {
+          grid.innerHTML = '<div style="color: #94a3b8; grid-column: 1/-1; padding: 2rem; text-align: center;">No recordings found. Click "Scan NAS Archive" to discover uploaded recordings.</div>';
+          return;
+        }
+
+        data.items.forEach(rec => {
+          const card = document.createElement('div');
+          card.className = 'rec-card';
+          card.onclick = () => playVideo(rec.id, `${rec.camera_name} - ${rec.filename}`);
+          
+          const thumbSrc = rec.thumbnail_path ? `/api/recordings/${rec.id}/thumbnail` : '';
+          const thumbHtml = thumbSrc 
+            ? `<img src="${thumbSrc}" alt="thumb" onerror="this.src=''"/>` 
+            : `<i class="bi bi-play-circle" style="font-size: 3rem; color: #475569;"></i>`;
+
+          card.innerHTML = `
+            <div class="rec-thumb">${thumbHtml}</div>
+            <div class="rec-meta">
+              <div><strong>${rec.camera_name}</strong></div>
+              <div style="color: #94a3b8; font-size: 0.75rem; margin-top: 2px;">${new Date(rec.recorded_at).toLocaleString()}</div>
+              <div><span class="rec-tag tag-${rec.event_type}">${rec.event_type.toUpperCase()}</span></div>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+      } catch(e) {
+        console.error("Failed to fetch recordings:", e);
+      }
+    }
+
+    async function triggerScan() {
+      try {
+        await fetch('/api/archive/scan', { method: 'POST' });
+        alert('NAS archive scan triggered in background.');
+        setTimeout(() => {
+          fetchStats();
+          loadRecordings();
+        }, 2000);
+      } catch(e) {
+        alert('Scan trigger failed');
+      }
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      document.getElementById('tab-live').style.display = tab === 'live' ? 'block' : 'none';
+      document.getElementById('tab-archive').style.display = tab === 'archive' ? 'block' : 'none';
+      document.getElementById('tab-status').style.display = tab === 'status' ? 'block' : 'none';
+
+      if (tab === 'archive') loadRecordings();
+    }
+
+    function playVideo(id, title) {
+      document.getElementById('modalTitle').textContent = title;
+      const player = document.getElementById('player');
+      player.src = `/api/recordings/${id}/stream`;
+      document.getElementById('videoModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      const player = document.getElementById('player');
+      player.pause();
+      player.src = '';
+      document.getElementById('videoModal').style.display = 'none';
+    }
+
+    fetchStats();
+  </script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+name: "ER-Adlernest"
+version: "1.0.0"
+slug: "er_adlernest"
+description: "Your Eagle Eye for Home Assistant Surveillance - Modern CCTV live viewer, archive manager and NAS recording explorer."
+url: "https://github.com/Eidolf/hassio-addons/tree/main/er_adlernest"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+startup: services
+panel_icon: "mdi:cctv"
+panel_title: "ER-Adlernest"
+panel_admin: false
+ingress: true
+ingress_port: 8098
+ingress_entry: "/"
+homeassistant_api: true
+hassio_api: true
+hassio_role: manager
+host_network: false
+privileged:
+  - SYS_ADMIN
+  - DAC_READ_SEARCH
+map:
+  - "share:rw"
+  - "media:rw"
+  - "config:rw"
+ports:
+  8098/tcp: 8098
+ports_description:
+  8098/tcp: "ER-Adlernest Web UI / Stream & Archive API"
+options:
+  log_level: "info"
+  storage_type: "local"
+  local_path: "/share/er_adlernest/recordings"
+  samba_enabled: false
+  samba_server: ""
+  samba_share: ""
+  samba_username: ""
+  samba_password: ""
+  samba_subpath: ""
+  scan_interval_minutes: 5
+  cameras: []
+schema:
+  log_level: list(debug|info|warning|error)
+  storage_type: list(local|cifs)
+  local_path: str
+  samba_enabled: bool
+  samba_server: str?
+  samba_share: str?
+  samba_username: str?
+  samba_password: password?
+  samba_subpath: str?
+  scan_interval_minutes: int(1,60)
+  cameras:
+    - name: str
+      source_type: list(rtsp|onvif|reolink|ha_camera|mjpeg)
+      url: str
+      substream_url: str?
+      username: str?
+      password: password?
+      fps: int?
