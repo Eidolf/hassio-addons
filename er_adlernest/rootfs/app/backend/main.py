@@ -22,7 +22,7 @@ logger = logging.getLogger("adlernest")
 
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.0.3",
+    version="1.0.4",
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
@@ -149,7 +149,6 @@ def browse_filesystem(path: str = Query("/media")):
 
     # Check if target directory exists
     if not os.path.exists(safe_path) or not os.path.isdir(safe_path):
-        # Fallback to root mounts available in HA container
         candidates = ["/media", "/share", "/data", "/"]
         for c in candidates:
             if os.path.exists(c) and os.path.isdir(c):
@@ -169,64 +168,78 @@ def browse_filesystem(path: str = Query("/media")):
 # --- Home Assistant Native Integration: Entity Discovery & Proxy ---
 @app.get("/api/ha/cameras")
 def list_homeassistant_cameras():
-    """Fetch camera entities directly from Home Assistant Supervisor / Core API using urllib."""
-    supervisor_token = os.getenv("SUPERVISOR_TOKEN")
-    ha_url = "http://supervisor/core/api/states"
+    """Fetch camera entities directly from Home Assistant Core API via Supervisor token or Hassio token."""
+    token = os.getenv("SUPERVISOR_TOKEN") or os.getenv("HASSIO_TOKEN")
     
-    if not supervisor_token:
-        logger.info("SUPERVISOR_TOKEN not present in container environment.")
-        return {"error": "SUPERVISOR_TOKEN not set", "cameras": []}
+    # Try supervisor URL first, fallback to homeassistant directly
+    endpoints = [
+        "http://supervisor/core/api/states",
+        "http://homeassistant:8123/api/states"
+    ]
+    
+    if not token:
+        logger.info("Neither SUPERVISOR_TOKEN nor HASSIO_TOKEN is present.")
+        return {"error": "SUPERVISOR_TOKEN not available (Ensure homeassistant_api: true)", "cameras": []}
 
-    try:
-        req = urllib.request.Request(
-            ha_url,
-            headers={
-                "Authorization": f"Bearer {supervisor_token}",
-                "Content-Type": "application/json"
-            }
-        )
-        with urllib.request.urlopen(req, timeout=5) as response:
-            if response.status == 200:
-                body = response.read().decode("utf-8")
-                states = json.loads(body)
-                cams = []
-                for s in states:
-                    eid = s.get("entity_id", "")
-                    if eid.startswith("camera."):
-                        attrs = s.get("attributes", {})
-                        cams.append({
-                            "entity_id": eid,
-                            "name": attrs.get("friendly_name", eid),
-                            "state": s.get("state"),
-                            "brand": attrs.get("brand", "Home Assistant Camera")
-                        })
-                return {"cameras": cams}
-            return {"error": f"HA API status {response.status}", "cameras": []}
-    except Exception as e:
-        logger.warning(f"Error querying Home Assistant cameras: {e}")
-        return {"error": str(e), "cameras": []}
+    last_error = "Unknown error"
+    for ha_url in endpoints:
+        try:
+            req = urllib.request.Request(
+                ha_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=4) as response:
+                if response.status == 200:
+                    body = response.read().decode("utf-8")
+                    states = json.loads(body)
+                    cams = []
+                    for s in states:
+                        eid = s.get("entity_id", "")
+                        if eid.startswith("camera."):
+                            attrs = s.get("attributes", {})
+                            cams.append({
+                                "entity_id": eid,
+                                "name": attrs.get("friendly_name", eid),
+                                "state": s.get("state"),
+                                "brand": attrs.get("brand", "Home Assistant Camera")
+                            })
+                    return {"cameras": cams}
+                last_error = f"HTTP {response.status} from {ha_url}"
+        except urllib.error.HTTPError as he:
+            last_error = f"HTTP {he.code}: {he.reason}"
+        except Exception as e:
+            last_error = str(e)
+            
+    return {"error": last_error, "cameras": []}
 
 @app.get("/api/ha/camera_proxy/{entity_id}")
 def proxy_ha_camera(entity_id: str):
     """Proxy live image snapshot from Home Assistant camera entity."""
-    supervisor_token = os.getenv("SUPERVISOR_TOKEN")
-    if not supervisor_token:
+    token = os.getenv("SUPERVISOR_TOKEN") or os.getenv("HASSIO_TOKEN")
+    if not token:
         raise HTTPException(status_code=500, detail="Supervisor token missing")
 
-    url = f"http://supervisor/core/api/camera_proxy/{entity_id}"
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={"Authorization": f"Bearer {supervisor_token}"}
-        )
-        with urllib.request.urlopen(req, timeout=6) as response:
-            content = response.read()
-            content_type = response.headers.get("Content-Type", "image/jpeg")
-            return Response(content=content, media_type=content_type)
-    except urllib.error.HTTPError as he:
-        raise HTTPException(status_code=he.code, detail=f"HA camera_proxy error: {he.reason}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    endpoints = [
+        f"http://supervisor/core/api/camera_proxy/{entity_id}",
+        f"http://homeassistant:8123/api/camera_proxy/{entity_id}"
+    ]
+    for url in endpoints:
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                content = response.read()
+                content_type = response.headers.get("Content-Type", "image/jpeg")
+                return Response(content=content, media_type=content_type)
+        except Exception:
+            continue
+            
+    raise HTTPException(status_code=500, detail="Could not retrieve snapshot from camera proxy")
 
 # --- Trigger Indexing ---
 @app.post("/api/archive/scan")
@@ -237,7 +250,21 @@ def trigger_scan(background_tasks: BackgroundTasks):
 # --- Camera Endpoints ---
 @app.get("/api/cameras")
 def list_cameras(db: Session = Depends(get_db)):
-    return db.query(Camera).all()
+    cams = db.query(Camera).all()
+    res = []
+    for c in cams:
+        res.append({
+            "id": c.id,
+            "name": c.name,
+            "source_type": c.source_type,
+            "stream_url": c.stream_url,
+            "substream_url": c.substream_url,
+            "ha_entity_id": c.ha_entity_id,
+            "folder_mapping": c.folder_mapping,
+            "fps": c.fps,
+            "enabled": c.enabled
+        })
+    return res
 
 @app.post("/api/cameras")
 async def create_or_update_camera(request: Request, db: Session = Depends(get_db)):
@@ -319,11 +346,28 @@ def get_recordings(
     total = query.count()
     records = query.order_by(desc(Recording.recorded_at)).offset(offset).limit(limit).all()
     
+    res_items = []
+    for r in records:
+        res_items.append({
+            "id": r.id,
+            "camera_name": r.camera_name,
+            "filename": r.filename,
+            "relative_path": r.relative_path,
+            "file_size": r.file_size,
+            "duration": r.duration,
+            "width": r.width,
+            "height": r.height,
+            "codec": r.codec,
+            "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
+            "event_type": r.event_type,
+            "thumbnail_path": r.thumbnail_path
+        })
+        
     return {
         "total": total,
         "limit": limit,
         "offset": offset,
-        "items": records
+        "items": res_items
     }
 
 @app.get("/api/recordings/{rec_id}")
@@ -331,7 +375,17 @@ def get_recording_detail(rec_id: int, db: Session = Depends(get_db)):
     rec = db.query(Recording).filter(Recording.id == rec_id).first()
     if not rec:
         raise HTTPException(status_code=404, detail="Recording not found")
-    return rec
+    return {
+        "id": rec.id,
+        "camera_name": rec.camera_name,
+        "filename": rec.filename,
+        "relative_path": rec.relative_path,
+        "file_size": rec.file_size,
+        "duration": rec.duration,
+        "recorded_at": rec.recorded_at.isoformat() if rec.recorded_at else None,
+        "event_type": rec.event_type,
+        "thumbnail_path": rec.thumbnail_path
+    }
 
 @app.get("/api/recordings/{rec_id}/stream")
 def stream_video(rec_id: int, db: Session = Depends(get_db)):

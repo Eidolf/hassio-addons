@@ -255,7 +255,7 @@
           <select id="camHaEntity" onchange="onHaEntitySelected()">
             <option value="">-- Scanning Home Assistant entities... --</option>
           </select>
-          <div class="form-hint">Automatically reads existing camera entities registered in Home Assistant.</div>
+          <div class="form-hint" id="haEntityHint">Automatically reads existing camera entities registered in Home Assistant.</div>
         </div>
 
         <div class="form-group">
@@ -303,9 +303,23 @@
     let browserCurrentPath = '/media';
     let browserParentPath = null;
 
+    // Helper: Build relative API URLs correctly even when running under HA Ingress subpaths
+    function getApiUrl(endpoint) {
+      const cleanEndpoint = endpoint.replace(/^\//, '');
+      const path = window.location.pathname.replace(/\/index\.html$/, '');
+      const base = path.endsWith('/') ? path : path + '/';
+      return base + cleanEndpoint;
+    }
+
+    async function apiFetch(endpoint, options = {}) {
+      const url = getApiUrl(endpoint);
+      return await fetch(url, options);
+    }
+
     async function fetchStatus() {
       try {
-        const res = await fetch('/api/status');
+        const res = await apiFetch('api/status');
+        if (!res.ok) return;
         const data = await res.json();
         document.getElementById('stat-recordings').textContent = data.statistics.total_recordings;
         document.getElementById('stat-cameras').textContent = data.statistics.total_cameras;
@@ -323,7 +337,8 @@
 
     async function loadCameras() {
       try {
-        const res = await fetch('/api/cameras');
+        const res = await apiFetch('api/cameras');
+        if (!res.ok) return;
         appCameras = await res.json();
         renderLiveView();
         renderCameraManageList();
@@ -355,7 +370,7 @@
         
         let viewContent = '';
         if (cam.ha_entity_id) {
-          const snapshotUrl = `/api/ha/camera_proxy/${cam.ha_entity_id}?t=${Date.now()}`;
+          const snapshotUrl = getApiUrl(`api/ha/camera_proxy/${cam.ha_entity_id}?t=${Date.now()}`);
           viewContent = `
             <img src="${snapshotUrl}" onerror="this.onerror=null;this.parentElement.innerHTML='<div style=\'color:#64748b; font-family:monospace;\'>STREAM STANDBY / OFFLINE</div>'"/>
             <div class="cam-crosshair"></div>
@@ -429,12 +444,15 @@
     async function loadRecordings() {
       const cam = document.getElementById('filterCamera').value;
       const event = document.getElementById('filterEvent').value;
-      const url = new URL('/api/recordings', window.location.origin);
-      if (cam) url.searchParams.append('camera', cam);
-      if (event) url.searchParams.append('event_type', event);
+      let queryStr = '';
+      const params = [];
+      if (cam) params.push(`camera=${encodeURIComponent(cam)}`);
+      if (event) params.push(`event_type=${encodeURIComponent(event)}`);
+      if (params.length > 0) queryStr = '?' + params.join('&');
 
       try {
-        const res = await fetch(url);
+        const res = await apiFetch('api/recordings' + queryStr);
+        if (!res.ok) return;
         const data = await res.json();
         const grid = document.getElementById('recordingsGrid');
         grid.innerHTML = '';
@@ -450,7 +468,7 @@
           card.className = 'rec-card';
           card.onclick = () => playVideo(rec.id, `${rec.camera_name} - ${rec.filename}`);
           
-          const thumbSrc = rec.thumbnail_path ? `/api/recordings/${rec.id}/thumbnail` : '';
+          const thumbSrc = rec.thumbnail_path ? getApiUrl(`api/recordings/${rec.id}/thumbnail`) : '';
           const thumbHtml = thumbSrc 
             ? `<img src="${thumbSrc}" alt="thumb" onerror="this.src=''"/>` 
             : `<i class="bi bi-play-circle" style="font-size: 3rem; color: #475569;"></i>`;
@@ -464,7 +482,7 @@
                 <strong>${rec.camera_name}</strong>
                 <span class="rec-tag ${tagClass}">${(rec.event_type || 'regular').toUpperCase()}</span>
               </div>
-              <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 4px; font-family: monospace;">${new Date(rec.recorded_at).toLocaleString()}</div>
+              <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 4px; font-family: monospace;">${rec.recorded_at ? new Date(rec.recorded_at).toLocaleString() : ''}</div>
             </div>
           `;
           grid.appendChild(card);
@@ -476,16 +494,23 @@
 
     async function loadHACameras() {
       const select = document.getElementById('camHaEntity');
+      const hint = document.getElementById('haEntityHint');
       select.innerHTML = '<option value="">-- Scanning Home Assistant entities... --</option>';
 
       try {
-        const res = await fetch('/api/ha/cameras');
+        const res = await apiFetch('api/ha/cameras');
+        if (!res.ok) {
+          select.innerHTML = '<option value="">-- Failed to reach HA API --</option>';
+          hint.textContent = `API returned HTTP ${res.status}`;
+          return;
+        }
         const data = await res.json();
         haCamerasList = data.cameras || [];
         select.innerHTML = '';
 
         if (haCamerasList.length === 0) {
-          select.innerHTML = '<option value="">-- No camera.* entities found in HA --</option>';
+          select.innerHTML = '<option value="">-- No camera.* entities found --</option>';
+          hint.textContent = data.error ? `Notice: ${data.error}` : 'No camera.* entities discovered in HA Core states.';
           return;
         }
 
@@ -496,9 +521,10 @@
           opt.textContent = `${c.name} (${c.entity_id})`;
           select.appendChild(opt);
         });
+        hint.textContent = `Found ${haCamerasList.length} camera entities in Home Assistant.`;
       } catch(e) {
         select.innerHTML = '<option value="">-- Error reading HA cameras --</option>';
-        console.error("Failed loading HA cameras:", e);
+        hint.textContent = `Network error: ${e}`;
       }
     }
 
@@ -559,7 +585,7 @@
       };
 
       try {
-        const res = await fetch('/api/cameras', {
+        const res = await apiFetch('api/cameras', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(payload)
@@ -569,7 +595,7 @@
         try {
           data = JSON.parse(resText);
         } catch(err) {
-          alert("Server error response: " + resText);
+          alert(`Server error (${res.status}): ` + resText);
           return;
         }
         
@@ -587,7 +613,7 @@
     async function deleteCamera(id) {
       if (!confirm("Delete camera configuration?")) return;
       try {
-        await fetch(`/api/cameras/${id}`, { method: 'DELETE' });
+        await apiFetch(`api/cameras/${id}`, { method: 'DELETE' });
         await loadCameras();
       } catch(e) {
         alert("Failed to delete camera: " + e);
@@ -603,8 +629,16 @@
       list.innerHTML = '<span style="color: var(--text-muted); font-size: 0.85rem; padding: 8px;">Loading directory contents...</span>';
 
       try {
-        const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentPath)}`);
-        const data = await res.json();
+        const res = await apiFetch(`api/fs/browse?path=${encodeURIComponent(currentPath)}`);
+        const resText = await res.text();
+        let data;
+        try {
+          data = JSON.parse(resText);
+        } catch(err) {
+          list.innerHTML = `<span style="color: var(--danger); font-size: 0.85rem; padding: 8px;">Response error (${res.status}): ${resText}</span>`;
+          return;
+        }
+
         browserCurrentPath = data.current;
         browserParentPath = data.parent;
         pathLabel.textContent = data.current;
@@ -672,12 +706,20 @@
         return;
       }
       try {
-        const res = await fetch('/api/settings', {
+        const res = await apiFetch('api/settings', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ storage_path: path })
         });
-        const data = await res.json();
+        const resText = await res.text();
+        let data;
+        try {
+          data = JSON.parse(resText);
+        } catch(err) {
+          alert(`Save failed (${res.status}): ` + resText);
+          return;
+        }
+        
         alert("Storage path saved: " + data.storage_path + "\nScanning archive in background...");
         document.getElementById('settingStoragePath').value = data.storage_path;
         document.getElementById('stat-active-path').textContent = data.storage_path;
@@ -690,7 +732,7 @@
 
     async function triggerScan() {
       try {
-        await fetch('/api/archive/scan', { method: 'POST' });
+        await apiFetch('api/archive/scan', { method: 'POST' });
         setTimeout(() => {
           fetchStatus();
           loadRecordings();
@@ -715,7 +757,7 @@
     function playVideo(id, title) {
       document.getElementById('modalTitle').textContent = title;
       const player = document.getElementById('player');
-      player.src = `/api/recordings/${id}/stream`;
+      player.src = getApiUrl(`api/recordings/${id}/stream`);
       document.getElementById('videoModal').style.display = 'flex';
     }
 
