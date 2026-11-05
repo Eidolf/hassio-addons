@@ -97,6 +97,34 @@
     .camera-manage-meta code { word-break: break-all; }
     .camera-manage-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 
+    /* Timeline CCTV view styles */
+    .timeline-container { display: flex; flex-direction: column; gap: 1.25rem; }
+    .timeline-player-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden; position: relative; }
+    .timeline-player-header { padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; background: rgba(7,12,20,0.85); border-bottom: 1px solid var(--card-border); flex-wrap: wrap; gap: 8px; }
+    .timeline-video-box { background: #000; height: 440px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+    .timeline-video-box video { width: 100%; height: 100%; object-fit: contain; }
+    .timeline-video-box img { width: 100%; height: 100%; object-fit: contain; }
+    .timeline-controls-bar { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 1rem; background: rgba(7,12,20,0.95); border-top: 1px solid var(--card-border); flex-wrap: wrap; gap: 10px; }
+    .timeline-board { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; user-select: none; }
+    .timeline-board-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .timeline-track-wrap { position: relative; background: #070c14; border: 1px solid var(--card-border); border-radius: 6px; overflow: hidden; cursor: crosshair; }
+    .timeline-ruler { height: 26px; border-bottom: 1px solid var(--card-border); position: relative; background: rgba(15,23,42,0.8); }
+    .timeline-hour-mark { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(100,116,139,0.3); font-size: 0.68rem; color: var(--text-muted); padding-left: 3px; line-height: 24px; font-family: monospace; pointer-events: none; }
+    .timeline-tracks-area { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; max-height: 280px; overflow-y: auto; position: relative; }
+    .timeline-cam-row { display: flex; align-items: center; height: 32px; position: relative; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    .timeline-cam-label { width: 140px; flex-shrink: 0; padding: 0 8px; font-size: 0.78rem; font-weight: 600; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .timeline-cam-label:hover { color: var(--accent); }
+    .timeline-cam-track { flex: 1; height: 100%; position: relative; background: rgba(2,6,23,0.5); }
+    .timeline-segment { position: absolute; top: 3px; bottom: 3px; border-radius: 2px; cursor: pointer; transition: opacity 0.15s, transform 0.15s; }
+    .timeline-segment:hover { opacity: 0.85; transform: scaleY(1.15); z-index: 10; }
+    .seg-regular { background: #38bdf8; }
+    .seg-motion { background: #f59e0b; }
+    .seg-person { background: #0284c7; }
+    .seg-vehicle { background: #10b981; }
+    .seg-doorbell { background: #ec4899; }
+    .timeline-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.8); pointer-events: none; z-index: 20; }
+    .timeline-playhead::after { content: ""; position: absolute; top: 0; left: -5px; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #ef4444; }
+
     @media (max-width: 768px) {
       header { padding: 0.75rem 1rem; flex-wrap: wrap; gap: 10px; }
       .header-actions { width: 100%; justify-content: flex-end; }
@@ -109,6 +137,8 @@
       .camera-manage-item { flex-direction: column; align-items: stretch; gap: 0.75rem; }
       .camera-manage-actions { justify-content: flex-end; }
       .camera-manage-actions button { flex: 1; justify-content: center; }
+      .timeline-video-box { height: 260px; }
+      .timeline-cam-label { width: 90px; font-size: 0.72rem; }
     }
   </style>
 </head>
@@ -131,6 +161,7 @@
 
   <nav class="nav-tabs">
     <button class="nav-btn active" onclick="switchTab('live',this)"><i class="bi bi-grid-3x3-gap-fill"></i> Live Matrix</button>
+    <button class="nav-btn" onclick="switchTab('timeline',this)"><i class="bi bi-clock-history"></i> Timeline 24h</button>
     <button class="nav-btn" onclick="switchTab('archive',this)"><i class="bi bi-collection-play-fill"></i> Video Archive</button>
     <button class="nav-btn" onclick="switchTab('cameras',this)"><i class="bi bi-camera-fill"></i> Cameras &amp; Mappings</button>
     <button class="nav-btn" onclick="switchTab('settings',this)"><i class="bi bi-hdd-network-fill"></i> Storage &amp; System</button>
@@ -146,6 +177,96 @@
 
     <!-- Live View Tab -->
     <div id="tab-live"><div class="camera-grid" id="cameraGrid"></div></div>
+
+    <!-- Timeline 24h Tab -->
+    <div id="tab-timeline" style="display:none;">
+      <div class="timeline-container">
+        <!-- Player card -->
+        <div class="timeline-player-card">
+          <div class="timeline-player-header">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <strong id="tlPlayerCamName" style="color:#fff;font-size:1.05rem;">Select Camera / Event</strong>
+              <span id="tlPlayerBadge" class="rec-tag tag-regular" style="margin:0;display:none;">RECORDING</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;font-family:monospace;font-size:0.88rem;">
+              <span style="color:var(--text-muted);"><i class="bi bi-calendar3"></i> <span id="tlPlayerDate">--</span></span>
+              <span style="color:var(--accent);font-weight:700;"><i class="bi bi-clock"></i> <span id="tlPlayerTime">00:00:00</span></span>
+            </div>
+          </div>
+          <div class="timeline-video-box" id="tlVideoBox">
+            <video id="tlVideoPlayer" playsinline preload="auto" controls style="display:none;"></video>
+            <img id="tlImagePlayer" src="" alt="Snapshot" style="display:none;" />
+            <div id="tlEmptyNotice" style="text-align:center;color:var(--text-muted);padding:2rem;">
+              <i class="bi bi-play-circle" style="font-size:3.5rem;color:var(--card-border);display:block;margin-bottom:10px;"></i>
+              <div>Click on any colored recording segment on the timeline below to play footage.</div>
+            </div>
+          </div>
+          <div class="timeline-controls-bar">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn-secondary" style="padding:5px 10px;" onclick="tlSkip(-10)" title="Rewind 10s"><i class="bi bi-rewind"></i> -10s</button>
+              <button class="btn-action" style="padding:5px 14px;" id="tlPlayPauseBtn" onclick="tlTogglePlay()"><i class="bi bi-play-fill"></i> Play</button>
+              <button class="btn-secondary" style="padding:5px 10px;" onclick="tlSkip(10)" title="Forward 10s"><i class="bi bi-fast-forward"></i> +10s</button>
+              <button class="btn-secondary" style="padding:5px 10px;" onclick="tlJumpNext(true)" title="Jump to previous clip"><i class="bi bi-skip-backward-fill"></i></button>
+              <button class="btn-secondary" style="padding:5px 10px;" onclick="tlJumpNext(false)" title="Jump to next clip"><i class="bi bi-skip-forward-fill"></i></button>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;font-size:0.85rem;">
+              <label style="color:var(--text-muted);">Speed:</label>
+              <select id="tlSpeedSelect" onchange="tlChangeSpeed(this.value)" style="background:#070c14;border:1px solid var(--card-border);color:#fff;padding:3px 8px;border-radius:4px;">
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1.0x</option>
+                <option value="2">2.0x</option>
+                <option value="4">4.0x</option>
+                <option value="8">8.0x</option>
+              </select>
+              <button class="btn-secondary" style="padding:4px 10px;" onclick="tlToggleFullscreen()" title="Fullscreen"><i class="bi bi-fullscreen"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Timeline Multi-Track Board -->
+        <div class="timeline-board">
+          <div class="timeline-board-header">
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+              <div class="filter-group">
+                <label style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">DATE:</label>
+                <input type="date" id="tlDateInput" onchange="loadTimelineData()" style="background:#070c14;border:1px solid var(--card-border);color:#fff;padding:5px 10px;border-radius:6px;font-size:0.88rem;cursor:pointer;" />
+              </div>
+              <div class="filter-group">
+                <label style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">CAMERA FOCUS:</label>
+                <select id="tlCameraFilter" onchange="onTlCameraFilterChange()" style="background:#070c14;border:1px solid var(--card-border);color:#fff;padding:5px 10px;border-radius:6px;font-size:0.88rem;">
+                  <option value="">All Cameras (Multi-Track)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Legend -->
+            <div style="display:flex;gap:10px;align-items:center;font-size:0.75rem;flex-wrap:wrap;">
+              <span><span style="display:inline-block;width:10px;height:10px;background:#38bdf8;border-radius:2px;margin-right:4px;"></span>Regular</span>
+              <span><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:4px;"></span>Motion</span>
+              <span><span style="display:inline-block;width:10px;height:10px;background:#0284c7;border-radius:2px;margin-right:4px;"></span>Person</span>
+              <span><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:4px;"></span>Vehicle</span>
+              <span><span style="display:inline-block;width:10px;height:10px;background:#ec4899;border-radius:2px;margin-right:4px;"></span>Doorbell</span>
+            </div>
+          </div>
+
+          <!-- Interactive 24h Ruler & Tracks -->
+          <div class="timeline-track-wrap" id="tlTrackWrap">
+            <!-- 24h Ruler (00:00 to 24:00) -->
+            <div class="timeline-ruler" id="tlRuler"></div>
+
+            <!-- Tracks container -->
+            <div class="timeline-tracks-area" id="tlTracksArea"></div>
+
+            <!-- Red Playhead marker -->
+            <div class="timeline-playhead" id="tlPlayhead" style="left:0px;"></div>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);display:flex;justify-content:space-between;">
+            <span><i class="bi bi-info-circle"></i> Drag the red marker or click anywhere on the 24h ruler to scrub through time.</span>
+            <span id="tlStatsCount" style="font-family:monospace;">0 clips</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Archive Tab -->
     <div id="tab-archive" style="display:none;">
@@ -489,6 +610,20 @@
         const actions = document.createElement('div');
         actions.style.cssText = 'display:flex;gap:6px;align-items:center;';
 
+        // Timeline link button
+        const timelineBtn = document.createElement('button');
+        timelineBtn.className = 'cam-badge-snapshot';
+        timelineBtn.style.cssText = 'cursor:pointer;border:none;background:rgba(37,99,235,0.25);color:#93c5fd;font-size:0.68rem;padding:3px 8px;border-radius:3px;font-weight:700;letter-spacing:0.5px;';
+        timelineBtn.innerHTML = '<i class="bi bi-clock-history"></i> TIMELINE';
+        timelineBtn.title = 'Open 24h timeline for this camera';
+        timelineBtn.onclick = (e) => {
+          e.stopPropagation();
+          const tlNavBtn = document.querySelector('.nav-btn[onclick*="timeline"]');
+          document.getElementById('tlCameraFilter').value = cam.name;
+          switchTab('timeline', tlNavBtn);
+        };
+        actions.appendChild(timelineBtn);
+
         // Archive link button
         const archiveBtn = document.createElement('button');
         archiveBtn.className = 'cam-badge-snapshot';
@@ -608,6 +743,18 @@
     function updateCameraFilterDropdown() {
       const select = document.getElementById('filterCamera');
       select.innerHTML = '<option value="">All Cameras</option>';
+      const tlSelect = document.getElementById('tlCameraFilter');
+      if (tlSelect) {
+        const curTlVal = tlSelect.value;
+        tlSelect.innerHTML = '<option value="">All Cameras (Multi-Track)</option>';
+        appCameras.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.name;
+          opt.textContent = c.name;
+          tlSelect.appendChild(opt);
+        });
+        tlSelect.value = curTlVal;
+      }
       appCameras.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.name;
@@ -1192,10 +1339,12 @@
     function switchTab(tab, btn) {
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      ['live','archive','cameras','settings'].forEach(t => {
-        document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
+      ['live','timeline','archive','cameras','settings'].forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (el) el.style.display = t === tab ? 'block' : 'none';
       });
-      document.getElementById('statsBar').style.display = tab === 'live' ? 'none' : 'grid';
+      document.getElementById('statsBar').style.display = (tab === 'live' || tab === 'timeline') ? 'none' : 'grid';
+      if (tab === 'timeline') initTimelineTab();
       if (tab === 'archive') loadRecordings();
       if (tab === 'settings') { browseDirectory(); loadSmbSources(); }
     }
@@ -1257,6 +1406,308 @@
       _fsCam = null;
       document.getElementById('camFullscreenView').innerHTML = '';
       document.getElementById('camFullscreenModal').style.display = 'none';
+    }
+
+    // -----------------------------------------------------------------------
+    // Timeline 24h Engine
+    // -----------------------------------------------------------------------
+    let tlCurrentDate = '';
+    let tlItems = [];
+    let tlCurrentClip = null;
+    let tlCurrentSec = 0;
+    let tlIsDragging = false;
+
+    function initTimelineTab() {
+      if (!tlCurrentDate) {
+        const today = new Date().toISOString().slice(0, 10);
+        tlCurrentDate = today;
+        const dInput = document.getElementById('tlDateInput');
+        if (dInput) dInput.value = today;
+      }
+      renderTimelineRuler();
+      loadTimelineData();
+      initTimelineDrag();
+    }
+
+    function renderTimelineRuler() {
+      const ruler = document.getElementById('tlRuler');
+      if (!ruler || ruler.childElementCount > 0) return;
+      ruler.innerHTML = '';
+      for (let h = 0; h <= 24; h += 2) {
+        const mark = document.createElement('div');
+        mark.className = 'timeline-hour-mark';
+        const pct = (h / 24) * 100;
+        mark.style.left = pct + '%';
+        mark.textContent = String(h).padStart(2, '0') + ':00';
+        ruler.appendChild(mark);
+      }
+    }
+
+    async function loadTimelineData() {
+      const dInput = document.getElementById('tlDateInput');
+      const dateVal = dInput ? dInput.value : '';
+      if (!dateVal) return;
+      tlCurrentDate = dateVal;
+      setText('tlPlayerDate', dateVal);
+
+      const camFilter = document.getElementById('tlCameraFilter').value;
+      let url = 'api/recordings/timeline?date=' + encodeURIComponent(dateVal);
+      if (camFilter) url += '&camera=' + encodeURIComponent(camFilter);
+
+      try {
+        const res = await apiFetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        tlItems = data.items || [];
+        setText('tlStatsCount', tlItems.length + ' clips found');
+        renderTimelineTracks();
+      } catch (e) {
+        console.error('Failed to load timeline data:', e);
+      }
+    }
+
+    function onTlCameraFilterChange() {
+      loadTimelineData();
+    }
+
+    function renderTimelineTracks() {
+      const area = document.getElementById('tlTracksArea');
+      area.innerHTML = '';
+      const filterCam = document.getElementById('tlCameraFilter').value;
+
+      // Determine camera rows to show
+      let camNames = [];
+      if (filterCam) {
+        camNames = [filterCam];
+      } else {
+        const set = new Set();
+        appCameras.forEach(c => set.add(c.name));
+        tlItems.forEach(i => set.add(i.camera_name));
+        camNames = Array.from(set);
+        if (camNames.length === 0) camNames = ['Default'];
+      }
+
+      camNames.forEach(camName => {
+        const row = document.createElement('div');
+        row.className = 'timeline-cam-row';
+
+        const label = document.createElement('div');
+        label.className = 'timeline-cam-label';
+        label.title = 'Filter only ' + camName;
+        label.innerHTML = '<i class="bi bi-camera-video"></i> ' + camName;
+        label.onclick = (e) => {
+          e.stopPropagation();
+          document.getElementById('tlCameraFilter').value = camName;
+          loadTimelineData();
+        };
+
+        const track = document.createElement('div');
+        track.className = 'timeline-cam-track';
+
+        // Filter clips for this camera
+        const clips = tlItems.filter(i => i.camera_name === camName);
+        clips.forEach(clip => {
+          const seg = document.createElement('div');
+          seg.className = 'timeline-segment seg-' + (clip.event_type || 'regular');
+          const leftPct = (clip.start_sec / 86400.0) * 100.0;
+          const durSec = Math.max(clip.duration || 5, 4);
+          const widthPct = Math.max((durSec / 86400.0) * 100.0, 0.25);
+          seg.style.left = leftPct + '%';
+          seg.style.width = widthPct + '%';
+          seg.title = clip.camera_name + ' | ' + new Date(clip.recorded_at).toLocaleTimeString() + ' (' + Math.round(clip.duration) + 's) - ' + (clip.event_type || 'regular');
+          seg.onclick = (e) => {
+            e.stopPropagation();
+            playTimelineClip(clip, 0);
+          };
+          track.appendChild(seg);
+        });
+
+        row.append(label, track);
+        area.appendChild(row);
+      });
+
+      // Update playhead position in pixels relative to track wrap
+      updatePlayheadVisual();
+    }
+
+    function initTimelineDrag() {
+      const wrap = document.getElementById('tlTrackWrap');
+      if (!wrap || wrap._dragInit) return;
+      wrap._dragInit = true;
+
+      function handleScrub(e) {
+        const ruler = document.getElementById('tlRuler');
+        const rect = ruler.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const offsetX = Math.max(0, Math.min(clientX - rect.left, rect.width));
+        const pct = rect.width > 0 ? (offsetX / rect.width) : 0;
+        const targetSec = pct * 86400.0;
+        scrubTimelineToSec(targetSec);
+      }
+
+      wrap.addEventListener('mousedown', (e) => {
+        tlIsDragging = true;
+        handleScrub(e);
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (tlIsDragging) handleScrub(e);
+      });
+
+      window.addEventListener('mouseup', () => {
+        tlIsDragging = false;
+      });
+
+      wrap.addEventListener('touchstart', (e) => {
+        tlIsDragging = true;
+        handleScrub(e);
+      }, { passive: true });
+
+      window.addEventListener('touchmove', (e) => {
+        if (tlIsDragging) handleScrub(e);
+      }, { passive: true });
+
+      window.addEventListener('touchend', () => {
+        tlIsDragging = false;
+      });
+
+      // Hook up video timeupdate to continuously move playhead
+      const vid = document.getElementById('tlVideoPlayer');
+      vid.addEventListener('timeupdate', () => {
+        if (!tlIsDragging && tlCurrentClip && vid.duration) {
+          const sec = tlCurrentClip.start_sec + vid.currentTime;
+          tlCurrentSec = sec;
+          updatePlayheadVisual();
+          updatePlayerTimeDisplay(sec);
+        }
+      });
+
+      vid.addEventListener('ended', () => {
+        tlJumpNext(false);
+      });
+    }
+
+    function scrubTimelineToSec(targetSec) {
+      tlCurrentSec = targetSec;
+      updatePlayheadVisual();
+      updatePlayerTimeDisplay(targetSec);
+
+      // Find clip active at this exact second
+      const activeClip = tlItems.find(i => targetSec >= i.start_sec && targetSec <= i.end_sec);
+      if (activeClip) {
+        if (!tlCurrentClip || tlCurrentClip.id !== activeClip.id) {
+          const offsetInside = Math.max(0, targetSec - activeClip.start_sec);
+          playTimelineClip(activeClip, offsetInside);
+        } else {
+          const vid = document.getElementById('tlVideoPlayer');
+          if (vid && vid.style.display !== 'none') {
+            vid.currentTime = Math.max(0, targetSec - activeClip.start_sec);
+          }
+        }
+      }
+    }
+
+    function updatePlayheadVisual() {
+      const playhead = document.getElementById('tlPlayhead');
+      const ruler = document.getElementById('tlRuler');
+      if (!playhead || !ruler) return;
+      const pct = (tlCurrentSec / 86400.0) * 100.0;
+      playhead.style.left = pct + '%';
+    }
+
+    function updatePlayerTimeDisplay(sec) {
+      const s = Math.floor(sec % 60);
+      const m = Math.floor((sec / 60) % 60);
+      const h = Math.floor((sec / 3600) % 24);
+      const str = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      setText('tlPlayerTime', str);
+    }
+
+    function playTimelineClip(clip, seekOffsetSec = 0) {
+      tlCurrentClip = clip;
+      tlCurrentSec = clip.start_sec + seekOffsetSec;
+      updatePlayheadVisual();
+      updatePlayerTimeDisplay(tlCurrentSec);
+
+      setText('tlPlayerCamName', clip.camera_name);
+      const badge = document.getElementById('tlPlayerBadge');
+      badge.style.display = 'inline-block';
+      badge.className = 'rec-tag tag-' + (clip.event_type || 'regular');
+      badge.textContent = (clip.event_type || 'regular').toUpperCase();
+
+      document.getElementById('tlEmptyNotice').style.display = 'none';
+      const vid = document.getElementById('tlVideoPlayer');
+      const img = document.getElementById('tlImagePlayer');
+
+      if (clip.media_type === 'image') {
+        vid.style.display = 'none';
+        vid.pause();
+        vid.src = '';
+        img.style.display = 'block';
+        img.src = getApiUrl('api/recordings/' + clip.id + '/stream');
+        setText('tlPlayPauseBtn', '<i class="bi bi-play-fill"></i> Play');
+      } else {
+        img.style.display = 'none';
+        img.src = '';
+        vid.style.display = 'block';
+        const streamUrl = getApiUrl('api/recordings/' + clip.id + '/stream');
+        if (vid.src !== streamUrl) {
+          vid.src = streamUrl;
+          vid.load();
+        }
+        vid.onloadedmetadata = () => {
+          if (seekOffsetSec > 0) vid.currentTime = seekOffsetSec;
+          vid.play().catch(() => {});
+          setText('tlPlayPauseBtn', '<i class="bi bi-pause-fill"></i> Pause');
+        };
+      }
+    }
+
+    function tlTogglePlay() {
+      const vid = document.getElementById('tlVideoPlayer');
+      if (vid.style.display === 'none' || !vid.src) return;
+      if (vid.paused) {
+        vid.play().catch(() => {});
+        setText('tlPlayPauseBtn', '<i class="bi bi-pause-fill"></i> Pause');
+      } else {
+        vid.pause();
+        setText('tlPlayPauseBtn', '<i class="bi bi-play-fill"></i> Play');
+      }
+    }
+
+    function tlSkip(deltaSec) {
+      const vid = document.getElementById('tlVideoPlayer');
+      if (vid.style.display !== 'none' && vid.src) {
+        vid.currentTime = Math.max(0, Math.min(vid.duration || 0, vid.currentTime + deltaSec));
+      }
+    }
+
+    function tlChangeSpeed(speed) {
+      const vid = document.getElementById('tlVideoPlayer');
+      if (vid) vid.playbackRate = parseFloat(speed) || 1.0;
+    }
+
+    function tlToggleFullscreen() {
+      const box = document.getElementById('tlVideoBox');
+      if (!document.fullscreenElement) {
+        box.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    function tlJumpNext(previous = false) {
+      if (tlItems.length === 0) return;
+      if (!tlCurrentClip) {
+        playTimelineClip(tlItems[0], 0);
+        return;
+      }
+      const idx = tlItems.findIndex(i => i.id === tlCurrentClip.id);
+      if (idx === -1) return;
+      const targetIdx = previous ? idx - 1 : idx + 1;
+      if (targetIdx >= 0 && targetIdx < tlItems.length) {
+        playTimelineClip(tlItems[targetIdx], 0);
+      }
     }
 
     // -----------------------------------------------------------------------

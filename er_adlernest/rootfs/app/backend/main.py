@@ -528,6 +528,59 @@ def _rec_dict(r: Recording) -> dict:
     }
 
 
+@app.get("/api/recordings/timeline")
+def get_timeline_data(
+    date: str = Query(..., description="Date formatted as YYYY-MM-DD"),
+    camera: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Return all recording events on a given day for timeline track rendering."""
+    try:
+        day_start = datetime.strptime(date, "%Y-%m-%d")
+        day_end = datetime(day_start.year, day_start.month, day_start.day, 23, 59, 59, 999999)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+
+    query = db.query(Recording).filter(
+        Recording.recorded_at >= day_start,
+        Recording.recorded_at <= day_end,
+    )
+    if camera:
+        query = query.filter(Recording.camera_name == camera)
+
+    # Sort ascending for timeline flow
+    records = query.order_by(Recording.recorded_at.asc(), Recording.id.asc()).all()
+
+    items = []
+    for r in records:
+        start_dt = r.recorded_at
+        dur = float(r.duration or 0)
+        # For images or 0-duration videos, default visual segment duration to 5 seconds
+        if dur <= 0:
+            dur = 5.0
+        start_sec = start_dt.hour * 3600 + start_dt.minute * 60 + start_dt.second + start_dt.microsecond / 1_000_000.0
+        end_sec = min(86400.0, start_sec + dur)
+        items.append({
+            "id": r.id,
+            "camera_name": r.camera_name,
+            "filename": r.filename,
+            "recorded_at": start_dt.isoformat(),
+            "start_sec": round(start_sec, 2),
+            "end_sec": round(end_sec, 2),
+            "duration": dur,
+            "event_type": r.event_type or "regular",
+            "media_type": getattr(r, "media_type", "video"),
+            "thumbnail_path": r.thumbnail_path,
+        })
+
+    return {
+        "date": date,
+        "camera": camera,
+        "count": len(items),
+        "items": items,
+    }
+
+
 @app.get("/api/recordings/days")
 def get_recording_days(
     camera: Optional[str] = None,
