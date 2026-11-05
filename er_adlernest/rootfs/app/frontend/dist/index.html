@@ -91,6 +91,12 @@
     .status-error { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid rgba(239,68,68,0.2); }
     .status-ok { background: rgba(16,185,129,0.1); color: var(--success); border: 1px solid rgba(16,185,129,0.2); }
 
+    .camera-manage-item { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .camera-manage-info { min-width: 0; flex: 1; }
+    .camera-manage-meta { font-size: 0.82rem; color: var(--text-muted); font-family: monospace; word-break: break-word; overflow-wrap: anywhere; }
+    .camera-manage-meta code { word-break: break-all; }
+    .camera-manage-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+
     @media (max-width: 768px) {
       header { padding: 0.75rem 1rem; flex-wrap: wrap; gap: 10px; }
       .header-actions { width: 100%; justify-content: flex-end; }
@@ -100,6 +106,9 @@
       .nav-tabs { padding: 0.5rem 0.75rem; }
       .nav-btn { font-size: 0.85rem; padding: 6px 12px; }
       .camera-grid { grid-template-columns: 1fr; }
+      .camera-manage-item { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+      .camera-manage-actions { justify-content: flex-end; }
+      .camera-manage-actions button { flex: 1; justify-content: center; }
     }
   </style>
 </head>
@@ -559,14 +568,14 @@
       }
       appCameras.forEach(cam => {
         const item = document.createElement('div');
-        item.className = 'stat-card';
-        item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+        item.className = 'stat-card camera-manage-item';
         const info = document.createElement('div');
+        info.className = 'camera-manage-info';
         const h4 = document.createElement('h4');
         h4.style.cssText = 'color:#fff;margin-bottom:4px;font-size:1.05rem;';
         h4.textContent = cam.name;
         const meta = document.createElement('div');
-        meta.style.cssText = 'font-size:0.82rem;color:var(--text-muted);font-family:monospace;';
+        meta.className = 'camera-manage-meta';
         const src = document.createElement('span');
         src.style.color = 'var(--accent)';
         src.textContent = cam.source_type.toUpperCase();
@@ -581,7 +590,7 @@
         meta.append('SOURCE: ', src, ' | SUBFOLDER: ', folder, ' | ', target, ' | ', hiRes);
         info.append(h4, meta);
         const btns = document.createElement('div');
-        btns.style.cssText = 'display:flex;gap:8px;';
+        btns.className = 'camera-manage-actions';
         const edit = document.createElement('button');
         edit.className = 'btn-secondary';
         edit.innerHTML = '<i class="bi bi-pencil"></i> Edit';
