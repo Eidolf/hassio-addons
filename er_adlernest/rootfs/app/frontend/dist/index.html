@@ -654,6 +654,8 @@
         view.className = 'cam-view';
         if (cam.ha_entity_id) {
           const img = document.createElement('img');
+          img.dataset.camId = String(cam.id);
+          img.dataset.haEntity = cam.ha_entity_id;
           img.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(cam.ha_entity_id)) + '?t=' + Date.now();
           img.alt = cam.name;
           img.style.cssText = 'width:100%;height:100%;object-fit:contain;cursor:pointer;';
@@ -676,14 +678,26 @@
           img.onerror = function() { this.onerror=null; this.parentElement.innerHTML='<div style="color:#64748b;font-family:monospace;">STREAM UNAVAILABLE</div>'; };
           view.appendChild(img);
         } else {
-          const ph = document.createElement('div');
-          ph.style.cssText = 'text-align:center;color:#475569;';
-          ph.innerHTML = '<i class="bi bi-broadcast-pin" style="font-size:3rem;display:block;margin-bottom:8px;"></i>';
-          const info = document.createElement('div');
-          info.style.cssText = 'font-family:monospace;font-size:0.8rem;';
-          info.textContent = cam.stream_url ? 'RTSP – not directly playable in browser' : 'No stream URL configured';
-          ph.appendChild(info);
-          view.appendChild(ph);
+          // RTSP / Reolink live preview with 5s snapshot refresh or direct mjpeg
+          const img = document.createElement('img');
+          img.dataset.camId = String(cam.id);
+          img.src = getApiUrl('api/cameras/' + cam.id + '/stream_mjpeg?highres=false&snapshot=true') + '&t=' + Date.now();
+          img.alt = cam.name;
+          img.style.cssText = 'width:100%;height:100%;object-fit:contain;cursor:pointer;';
+          img.onclick = () => openCamFullscreen(cam);
+          img.onerror = function() {
+            this.onerror = null;
+            const ph = document.createElement('div');
+            ph.style.cssText = 'text-align:center;color:#475569;cursor:pointer;';
+            ph.onclick = () => openCamFullscreen(cam);
+            ph.innerHTML = '<i class="bi bi-broadcast-pin" style="font-size:3rem;display:block;margin-bottom:8px;"></i>';
+            const info = document.createElement('div');
+            info.style.cssText = 'font-family:monospace;font-size:0.8rem;';
+            info.textContent = cam.stream_url ? 'Click to open Live Stream' : 'No stream URL configured';
+            ph.appendChild(info);
+            this.parentElement.replaceChild(ph, this);
+          };
+          view.appendChild(img);
         }
         const cross = document.createElement('div');
         cross.className = 'cam-crosshair';
@@ -1381,24 +1395,43 @@
       const view = document.getElementById('camFullscreenView');
       view.innerHTML = '';
       const useEntity = highres ? (cam.highres_ha_entity_id || cam.ha_entity_id) : cam.ha_entity_id;
-      const useMjpeg = highres ? (cam.highres_stream_url || cam.stream_url) : cam.stream_url;
+      const useUrl = highres ? (cam.highres_stream_url || cam.stream_url) : cam.stream_url;
+
       if (useEntity) {
+        // Continuous live MJPEG stream from Home Assistant proxy
         const img = document.createElement('img');
-        img.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
+        img.src = getApiUrl('api/ha/camera_stream/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
         img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
         img.alt = cam.name;
-        img.onerror = function() { this.onerror=null; view.innerHTML='<div style="color:#64748b;font-family:monospace;">SNAPSHOT UNAVAILABLE</div>'; };
+        img.onerror = function() {
+          // Fallback to snapshot refresh if stream not supported
+          this.onerror = null;
+          this.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
+        };
         view.appendChild(img);
-      } else if ((cam.source_type === 'mjpeg' || highres) && useMjpeg) {
+      } else if (cam.source_type === 'mjpeg' && useUrl) {
         const img = document.createElement('img');
-        img.src = useMjpeg;
+        img.src = useUrl;
         img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
         img.alt = cam.name;
+        view.appendChild(img);
+      } else if (useUrl) {
+        // Live RTSP / Reolink feed transcoded to live MJPEG stream
+        const img = document.createElement('img');
+        img.src = getApiUrl('api/cameras/' + cam.id + '/stream_mjpeg?highres=' + (highres ? 'true' : 'false')) + '&t=' + Date.now();
+        img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+        img.alt = cam.name;
+        img.onerror = function() {
+          this.onerror = null;
+          view.innerHTML = '<div style="color:#64748b;font-family:monospace;text-align:center;">' +
+            '<i class="bi bi-camera-video-off" style="font-size:3.5rem;display:block;margin-bottom:10px;"></i>' +
+            'LIVE STREAM CURRENTLY UNAVAILABLE</div>';
+        };
         view.appendChild(img);
       } else {
         view.innerHTML = '<div style="color:#64748b;font-family:monospace;text-align:center;">' +
           '<i class="bi bi-broadcast-pin" style="font-size:4rem;display:block;margin-bottom:12px;"></i>' +
-          'RTSP stream – not directly displayable in browser</div>';
+          'No stream URL configured</div>';
       }
     }
 
@@ -1735,11 +1768,39 @@
     }
 
     // -----------------------------------------------------------------------
+    // Live Matrix 5s Auto-Refresh
+    // -----------------------------------------------------------------------
+    function refreshLiveMatrixSnapshots() {
+      // Only refresh if Live tab is active and fullscreen modal is closed
+      const liveTab = document.getElementById('tab-live');
+      const fsModal = document.getElementById('camFullscreenModal');
+      if (!liveTab || liveTab.style.display === 'none' || (fsModal && fsModal.style.display === 'flex')) {
+        return;
+      }
+
+      const grid = document.getElementById('cameraGrid');
+      if (!grid) return;
+      const images = grid.querySelectorAll('img[data-cam-id]');
+      const ts = Date.now();
+
+      images.forEach(img => {
+        const camId = img.dataset.camId;
+        const haEntity = img.dataset.haEntity;
+        if (haEntity) {
+          img.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(haEntity)) + '?t=' + ts;
+        } else if (camId) {
+          img.src = getApiUrl('api/cameras/' + camId + '/stream_mjpeg?highres=false&snapshot=true') + '&t=' + ts;
+        }
+      });
+    }
+
+    // -----------------------------------------------------------------------
     // Init
     // -----------------------------------------------------------------------
     fetchStatus();
     loadCameras();
     setInterval(fetchStatus, 6000);
+    setInterval(refreshLiveMatrixSnapshots, 5000);
   </script>
 </body>
 </html>

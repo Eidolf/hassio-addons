@@ -388,6 +388,106 @@ def proxy_ha_camera(entity_id: str):
         logger.debug("Camera proxy failed for %s: %s", entity_id, exc)
         raise HTTPException(status_code=502, detail="Could not retrieve snapshot")
 
+
+@app.get("/api/ha/camera_stream/{entity_id:path}")
+def stream_ha_camera(entity_id: str):
+    """Proxy live MJPEG stream from Home Assistant camera entity."""
+    if not entity_id.startswith("camera.") or "/" in entity_id:
+        raise HTTPException(status_code=400, detail="Invalid entity id")
+    token = os.getenv("SUPERVISOR_TOKEN")
+    if not token:
+        raise HTTPException(status_code=503, detail="Supervisor token missing")
+
+    url = f"http://supervisor/core/api/camera_proxy_stream/{entity_id}"
+
+    def iter_stream():
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                while True:
+                    chunk = resp.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
+        except Exception as e:
+            logger.debug("MJPEG HA stream error for %s: %s", entity_id, e)
+
+    return StreamingResponse(
+        iter_stream(),
+        media_type="multipart/x-mixed-replace; boundary=--frame"
+    )
+
+
+@app.get("/api/cameras/{cam_id}/stream_mjpeg")
+def stream_camera_mjpeg(cam_id: int, highres: bool = Query(False), snapshot: bool = Query(False), db: Session = Depends(get_db)):
+    """Transcode RTSP stream to live MJPEG stream or single snapshot via ffmpeg on-the-fly."""
+    cam = db.query(Camera).filter(Camera.id == cam_id).first()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    rtsp_url = (cam.highres_stream_url if highres else None) or cam.stream_url
+    if not rtsp_url:
+        raise HTTPException(status_code=400, detail="No RTSP stream URL configured for this camera")
+
+    if snapshot:
+        # Return a single JPEG snapshot from RTSP
+        cmd = [
+            "ffmpeg",
+            "-nostdin",
+            "-loglevel", "error",
+            "-rtsp_transport", "tcp",
+            "-i", rtsp_url,
+            "-vframes", "1",
+            "-q:v", "4",
+            "-f", "image2",
+            "-"
+        ]
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=6)
+            if res.returncode == 0 and res.stdout:
+                return Response(content=res.stdout, media_type="image/jpeg")
+            raise HTTPException(status_code=502, detail="Failed to grab camera snapshot")
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=504, detail="Snapshot capture timed out")
+
+    cmd = [
+        "ffmpeg",
+        "-nostdin",
+        "-loglevel", "error",
+        "-rtsp_transport", "tcp",
+        "-i", rtsp_url,
+        "-f", "mpjpeg",
+        "-boundary_tag", "frame",
+        "-q:v", "5",
+        "-r", str(min(cam.fps or 15, 15)),
+        "-"
+    ]
+
+    def iter_ffmpeg():
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**6)
+        try:
+            while True:
+                data = proc.stdout.read(8192)
+                if not data:
+                    break
+                yield data
+        except Exception:
+            pass
+        finally:
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+    return StreamingResponse(
+        iter_ffmpeg(),
+        media_type="multipart/x-mixed-replace; boundary=--frame"
+    )
+
 # ---------------------------------------------------------------------------
 # Archive scan trigger
 # ---------------------------------------------------------------------------
