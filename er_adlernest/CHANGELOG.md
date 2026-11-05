@@ -2,6 +2,16 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.2.2] - 2026-11-06
+
+### Fixed
+- **Live Stream in Fullscreen View**:
+  - Fixed missing `subprocess` and `StreamingResponse` imports in backend, resolving crashes on stream endpoints.
+  - Added `-c:v mjpeg` encoder to RTSP transcoding in `ffmpeg`, correctly generating live multipart/x-mixed-replace JPEG streams.
+  - Modernized Home Assistant camera entity proxy streaming using asynchronous `httpx` with automatic fallback to high-frequency live snapshot stream if `camera_proxy_stream` is not natively supported by the camera entity.
+- **Background Video Audio on Tab Switch**:
+  - Automatically pause timeline video playback when switching to other navigation tabs (e.g. Live Matrix), preventing unwanted background sound.
+
 ## [1.2.1] - 2026-11-05
 
 ### Fixed

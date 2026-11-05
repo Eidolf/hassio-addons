@@ -2,15 +2,17 @@ import os
 import json
 import logging
 import asyncio
+import subprocess
 import urllib.request
 import urllib.error
 from typing import Optional, Literal
 from datetime import datetime, date, time, timedelta
 import mimetypes
 
+import httpx
 from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
@@ -38,7 +40,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.2.1",
+    version="1.2.2",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -397,27 +399,50 @@ def proxy_ha_camera(entity_id: str):
 
 
 @app.get("/api/ha/camera_stream/{entity_id:path}")
-def stream_ha_camera(entity_id: str):
-    """Proxy live MJPEG stream from Home Assistant camera entity."""
+async def stream_ha_camera(entity_id: str):
+    """Proxy live MJPEG stream from Home Assistant camera entity with graceful fallback to auto-refreshing snapshot stream."""
     if not entity_id.startswith("camera.") or "/" in entity_id:
         raise HTTPException(status_code=400, detail="Invalid entity id")
     token = os.getenv("SUPERVISOR_TOKEN")
     if not token:
         raise HTTPException(status_code=503, detail="Supervisor token missing")
 
-    url = f"http://supervisor/core/api/camera_proxy_stream/{entity_id}"
+    url_stream = f"http://supervisor/core/api/camera_proxy_stream/{entity_id}"
+    url_proxy = f"http://supervisor/core/api/camera_proxy/{entity_id}"
+    headers = {"Authorization": f"Bearer {token}"}
 
-    def iter_stream():
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    async def iter_stream():
+        timeout = httpx.Timeout(connect=6.0, read=None, write=6.0, pool=6.0)
+        stream_worked = False
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                while True:
-                    chunk = resp.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("GET", url_stream, headers=headers) as resp:
+                    if resp.status_code == 200:
+                        stream_worked = True
+                        async for chunk in resp.aiter_bytes():
+                            yield chunk
+                    else:
+                        logger.info("HA camera_proxy_stream status %s for %s; using snapshot stream fallback", resp.status_code, entity_id)
         except Exception as e:
-            logger.debug("MJPEG HA stream error for %s: %s", entity_id, e)
+            logger.debug("MJPEG HA direct stream attempt for %s: %s", entity_id, e)
+
+        # Fallback: if camera_proxy_stream is not supported by entity, synthesize an MJPEG stream by polling camera_proxy
+        if not stream_worked:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
+                while True:
+                    try:
+                        r = await client.get(url_proxy, headers=headers)
+                        if r.status_code == 200 and r.content:
+                            frame = (
+                                b"--frame\r\n"
+                                b"Content-Type: image/jpeg\r\n\r\n" +
+                                r.content +
+                                b"\r\n"
+                            )
+                            yield frame
+                    except Exception as exc:
+                        logger.debug("HA snapshot fallback poll error for %s: %s", entity_id, exc)
+                    await asyncio.sleep(1.0)
 
     return StreamingResponse(
         iter_stream(),
@@ -463,10 +488,11 @@ def stream_camera_mjpeg(cam_id: int, highres: bool = Query(False), snapshot: boo
         "-loglevel", "error",
         "-rtsp_transport", "tcp",
         "-i", rtsp_url,
+        "-c:v", "mjpeg",
+        "-q:v", "4",
+        "-r", str(min(cam.fps or 15, 15)),
         "-f", "mpjpeg",
         "-boundary_tag", "frame",
-        "-q:v", "5",
-        "-r", str(min(cam.fps or 15, 15)),
         "-"
     ]
 

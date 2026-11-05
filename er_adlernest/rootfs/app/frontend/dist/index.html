@@ -1379,6 +1379,16 @@
         if (el) el.style.display = t === tab ? 'block' : 'none';
       });
       document.getElementById('statsBar').style.display = (tab === 'live' || tab === 'timeline') ? 'none' : 'grid';
+
+      // If leaving timeline tab, pause video player to avoid background audio/playback
+      if (tab !== 'timeline') {
+        const vid = document.getElementById('tlVideoPlayer');
+        if (vid && !vid.paused) {
+          vid.pause();
+          setHtml('tlPlayPauseBtn', '<i class="bi bi-play-fill"></i> Play');
+        }
+      }
+
       if (tab === 'timeline') initTimelineTab();
       if (tab === 'archive') loadRecordings();
       if (tab === 'settings') { browseDirectory(); loadSmbSources(); }
