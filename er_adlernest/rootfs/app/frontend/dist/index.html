@@ -264,14 +264,15 @@
           <div class="form-hint">Subfolder inside your archive root where this camera's files are stored.</div>
         </div>
         <div class="form-group" id="groupHighResStream" style="display:none;">
-          <label>High-Res Stream URL (optional):</label>
-          <input type="text" id="camHighresStreamUrl" placeholder="rtsp://admin:pass@192.168.1.100:554/h265Preview_01_main" />
-          <div class="form-hint">Higher-resolution source used in fullscreen mode.</div>
-        </div>
-        <div class="form-group" id="groupHighResHa" style="display:none;">
-          <label>High-Res HA Camera Entity (optional):</label>
-          <select id="camHighresHaEntity"><option value="">-- Same as main --</option></select>
-          <div class="form-hint">Higher-resolution HA camera entity for fullscreen.</div>
+          <label>High-Res Source (optional):</label>
+          <div id="highresUrlGroup">
+            <input type="text" id="camHighresStreamUrl" placeholder="rtsp://admin:pass@192.168.1.100:554/h265Preview_01_main" />
+            <div class="form-hint">Higher-resolution stream URL for fullscreen mode.</div>
+          </div>
+          <div id="highresHaGroup" style="display:none;">
+            <select id="camHighresHaEntity"><option value="">-- Same as main --</option></select>
+            <div class="form-hint">Higher-resolution HA camera entity for fullscreen (optional).</div>
+          </div>
         </div>
         <div class="form-group">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
@@ -758,12 +759,21 @@
           return;
         }
         select.innerHTML = '<option value="">-- Select a camera --</option>';
+        // Also populate the highres HA dropdown
+        const hrSelect = document.getElementById('camHighresHaEntity');
+        const hrVal = hrSelect ? hrSelect.value : '';
+        if (hrSelect) hrSelect.innerHTML = '<option value="">-- Same as main --</option>';
         haCamerasList.forEach(c => {
           const opt = document.createElement('option');
           opt.value = c.entity_id;
           opt.textContent = c.name + ' (' + c.entity_id + ')';
           select.appendChild(opt);
+          if (hrSelect) {
+            const hrOpt = opt.cloneNode(true);
+            hrSelect.appendChild(hrOpt);
+          }
         });
+        if (hrSelect && hrVal) hrSelect.value = hrVal;
         hint.textContent = 'Found ' + haCamerasList.length + ' camera entities.';
       } catch(e) {
         select.innerHTML = '<option value="">-- Error --</option>';
@@ -784,11 +794,13 @@
 
     function toggleSourceTypeFields() {
       const val = document.getElementById('camSourceType').value;
-      document.getElementById('groupHaEntity').style.display = val === 'ha_camera' ? 'block' : 'none';
-      document.getElementById('groupStreamUrl').style.display = val === 'ha_camera' ? 'none' : 'block';
-      document.getElementById('groupHighResStream').style.display = val === 'ha_camera' ? 'none' : 'block';
-      document.getElementById('groupHighResHa').style.display = val === 'ha_camera' ? 'block' : 'none';
-      if (val === 'ha_camera') loadHACameras();
+      const isHa = val === 'ha_camera';
+      document.getElementById('groupHaEntity').style.display = isHa ? 'block' : 'none';
+      document.getElementById('groupStreamUrl').style.display = isHa ? 'none' : 'block';
+      document.getElementById('groupHighResStream').style.display = 'block';
+      document.getElementById('highresUrlGroup').style.display = isHa ? 'none' : 'block';
+      document.getElementById('highresHaGroup').style.display = isHa ? 'block' : 'none';
+      if (isHa) loadHACameras();
     }
 
     // -----------------------------------------------------------------------
