@@ -94,3 +94,4 @@ All notable changes to the ER-Adlernest Home Assistant Add-on will be documented
 
 ### Added
 - Initial release of ER-Adlernest Add-on for Home Assistant.
+
