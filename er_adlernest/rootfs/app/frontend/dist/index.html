@@ -115,7 +115,7 @@
   </nav>
 
   <main>
-    <div class="stats-bar">
+    <div class="stats-bar" id="statsBar" style="display:none;">
       <div class="stat-card"><div class="stat-label">Total Archive Recordings</div><div class="stat-val" id="stat-recordings">0</div></div>
       <div class="stat-card"><div class="stat-label">Indexed Archive Size</div><div class="stat-val" id="stat-storage">0 MB</div></div>
       <div class="stat-card"><div class="stat-label">Active Camera Feeds</div><div class="stat-val" id="stat-cameras">0</div></div>
@@ -263,6 +263,23 @@
           <input type="text" id="camFolderMapping" placeholder="e.g. Einfahrt" />
           <div class="form-hint">Subfolder inside your archive root where this camera's files are stored.</div>
         </div>
+        <div class="form-group" id="groupHighResStream" style="display:none;">
+          <label>High-Res Stream URL (optional):</label>
+          <input type="text" id="camHighresStreamUrl" placeholder="rtsp://admin:pass@192.168.1.100:554/h265Preview_01_main" />
+          <div class="form-hint">Higher-resolution source used in fullscreen mode.</div>
+        </div>
+        <div class="form-group" id="groupHighResHa" style="display:none;">
+          <label>High-Res HA Camera Entity (optional):</label>
+          <select id="camHighresHaEntity"><option value="">-- Same as main --</option></select>
+          <div class="form-hint">Higher-resolution HA camera entity for fullscreen.</div>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="camFullscreenHighres" style="width:auto;" />
+            <span>Use high-res source in fullscreen</span>
+          </label>
+          <div class="form-hint">When enabled, fullscreen opens the high-res stream/entity instead of the main one.</div>
+        </div>
         <input type="hidden" id="camEditId" value="" />
         <div id="camModalMsg" style="display:none;"></div>
         <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:1.5rem;">
@@ -297,6 +314,20 @@
           <button class="btn-action" onclick="saveSmbSource()"><i class="bi bi-check2"></i> Save</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Camera Fullscreen Modal -->
+  <div class="modal-overlay" id="camFullscreenModal">
+    <div class="modal-box" style="max-width:none;width:100vw;height:100vh;border-radius:0;border:none;">
+      <div class="modal-header" style="padding:0.6rem 1.25rem;">
+        <h4 id="camFullscreenTitle" style="color:var(--accent);font-family:monospace;font-size:1rem;"></h4>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn-secondary" style="padding:4px 10px;font-size:0.78rem;" id="camFsToggleRes" onclick="toggleFullscreenRes()" title="Switch resolution"></button>
+          <button class="btn-secondary" style="padding:4px 10px;" onclick="closeCamFullscreen()"><i class="bi bi-x-lg"></i></button>
+        </div>
+      </div>
+      <div style="width:100%;height:calc(100vh - 52px);background:#000;display:flex;align-items:center;justify-content:center;position:relative;" id="camFullscreenView"></div>
     </div>
   </div>
 
@@ -428,23 +459,37 @@
         const titleWrap = document.createElement('div');
         const strong = document.createElement('strong');
         strong.textContent = cam.name;
-        const meta = document.createElement('div');
-        meta.className = 'cam-meta-folder';
-        meta.innerHTML = '<i class="bi bi-folder-check"></i> FOLDER: ';
-        meta.appendChild(document.createTextNode(cam.folder_mapping || cam.name));
-        titleWrap.append(strong, meta);
-        const badge = document.createElement('span');
-        if (cam.ha_entity_id) {
-          badge.className = 'cam-badge-snapshot';
-          badge.innerHTML = '<i class="bi bi-camera"></i> SNAPSHOT';
-        } else if (cam.source_type === 'mjpeg') {
-          badge.className = 'cam-badge-live';
-          badge.innerHTML = '<i class="bi bi-record-fill"></i> MJPEG';
-        } else {
-          badge.className = 'cam-badge-snapshot';
-          badge.innerHTML = '<i class="bi bi-broadcast-pin"></i> RTSP';
-        }
-        header.append(titleWrap, badge);
+        titleWrap.appendChild(strong);
+        header.append(titleWrap);
+
+        // Action buttons in header
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:6px;align-items:center;';
+
+        // Archive link button
+        const archiveBtn = document.createElement('button');
+        archiveBtn.className = 'cam-badge-snapshot';
+        archiveBtn.style.cssText = 'cursor:pointer;border:none;background:rgba(6,182,212,0.15);color:var(--accent);font-size:0.68rem;padding:3px 8px;border-radius:3px;font-weight:700;letter-spacing:0.5px;';
+        archiveBtn.innerHTML = '<i class="bi bi-collection-play"></i> ARCHIVE';
+        archiveBtn.title = 'Show archive for this camera';
+        archiveBtn.onclick = (e) => {
+          e.stopPropagation();
+          const archiveNavBtn = document.querySelector('.nav-btn[onclick*="archive"]');
+          document.getElementById('filterCamera').value = cam.name;
+          switchTab('archive', archiveNavBtn);
+        };
+        actions.appendChild(archiveBtn);
+
+        // Fullscreen button
+        const fsBtn = document.createElement('button');
+        fsBtn.className = 'cam-badge-live';
+        fsBtn.style.cssText = 'cursor:pointer;border:none;font-size:0.68rem;padding:3px 8px;border-radius:3px;font-weight:700;letter-spacing:0.5px;';
+        fsBtn.innerHTML = '<i class="bi bi-fullscreen"></i>';
+        fsBtn.title = 'Fullscreen';
+        fsBtn.onclick = (e) => { e.stopPropagation(); openCamFullscreen(cam); };
+        actions.appendChild(fsBtn);
+
+        header.appendChild(actions);
 
         // View
         const view = document.createElement('div');
@@ -453,6 +498,8 @@
           const img = document.createElement('img');
           img.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(cam.ha_entity_id)) + '?t=' + Date.now();
           img.alt = cam.name;
+          img.style.cssText = 'width:100%;height:100%;object-fit:contain;cursor:pointer;';
+          img.onclick = () => openCamFullscreen(cam);
           img.onerror = function() {
             this.onerror = null;
             const d = document.createElement('div');
@@ -466,6 +513,8 @@
           const img = document.createElement('img');
           img.src = cam.stream_url;
           img.alt = cam.name;
+          img.style.cssText = 'width:100%;height:100%;object-fit:contain;cursor:pointer;';
+          img.onclick = () => openCamFullscreen(cam);
           img.onerror = function() { this.onerror=null; this.parentElement.innerHTML='<div style="color:#64748b;font-family:monospace;">STREAM UNAVAILABLE</div>'; };
           view.appendChild(img);
         } else {
@@ -474,7 +523,7 @@
           ph.innerHTML = '<i class="bi bi-broadcast-pin" style="font-size:3rem;display:block;margin-bottom:8px;"></i>';
           const info = document.createElement('div');
           info.style.cssText = 'font-family:monospace;font-size:0.8rem;';
-          info.textContent = cam.stream_url ? 'RTSP configured – not directly playable in browser' : 'No stream URL configured';
+          info.textContent = cam.stream_url ? 'RTSP – not directly playable in browser' : 'No stream URL configured';
           ph.appendChild(info);
           view.appendChild(ph);
         }
@@ -512,13 +561,23 @@
         folder.textContent = cam.folder_mapping || 'None';
         const target = document.createElement('code');
         target.textContent = cam.ha_entity_id || cam.stream_url || 'N/A';
-        meta.append('SOURCE: ', src, ' | SUBFOLDER: ', folder, ' | ', target);
+        const hiRes = document.createElement('span');
+        hiRes.style.color = cam.highres_stream_url || cam.highres_ha_entity_id ? '#a78bfa' : '#475569';
+        hiRes.textContent = (cam.highres_stream_url || cam.highres_ha_entity_id) ? 'HI-RES' : 'no hi-res';
+        meta.append('SOURCE: ', src, ' | SUBFOLDER: ', folder, ' | ', target, ' | ', hiRes);
         info.append(h4, meta);
+        const btns = document.createElement('div');
+        btns.style.cssText = 'display:flex;gap:8px;';
+        const edit = document.createElement('button');
+        edit.className = 'btn-secondary';
+        edit.innerHTML = '<i class="bi bi-pencil"></i> Edit';
+        edit.onclick = () => openEditCameraModal(cam);
         const del = document.createElement('button');
         del.className = 'btn-danger';
         del.innerHTML = '<i class="bi bi-trash"></i> Delete';
         del.onclick = () => deleteCamera(cam.id);
-        item.append(info, del);
+        btns.append(edit, del);
+        item.append(info, btns);
         container.appendChild(item);
       });
     }
@@ -727,6 +786,8 @@
       const val = document.getElementById('camSourceType').value;
       document.getElementById('groupHaEntity').style.display = val === 'ha_camera' ? 'block' : 'none';
       document.getElementById('groupStreamUrl').style.display = val === 'ha_camera' ? 'none' : 'block';
+      document.getElementById('groupHighResStream').style.display = val === 'ha_camera' ? 'none' : 'block';
+      document.getElementById('groupHighResHa').style.display = val === 'ha_camera' ? 'block' : 'none';
       if (val === 'ha_camera') loadHACameras();
     }
 
@@ -736,11 +797,38 @@
     function openAddCameraModal() {
       clearMsg('camModalMsg');
       setText('camModalTitle', 'Add Camera');
-      ['camEditId','camName','camFolderMapping','camStreamUrl'].forEach(id => { document.getElementById(id).value = ''; });
+      ['camEditId','camName','camFolderMapping','camStreamUrl','camHighresStreamUrl'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('camHighresHaEntity').value = '';
+      document.getElementById('camFullscreenHighres').checked = false;
       document.getElementById('camSourceType').value = 'reolink';
       toggleSourceTypeFields();
       document.getElementById('cameraModal').style.display = 'flex';
     }
+
+    function openEditCameraModal(cam) {
+      clearMsg('camModalMsg');
+      setText('camModalTitle', 'Edit Camera');
+      document.getElementById('camEditId').value = cam.id;
+      document.getElementById('camName').value = cam.name || '';
+      document.getElementById('camFolderMapping').value = cam.folder_mapping || '';
+      document.getElementById('camStreamUrl').value = cam.stream_url || '';
+      document.getElementById('camHighresStreamUrl').value = cam.highres_stream_url || '';
+      document.getElementById('camFullscreenHighres').checked = !!cam.fullscreen_highres;
+      // Populate HA entity selector state
+      document.getElementById('camHaEntity').innerHTML = '<option value="">-- Loading… --</option>';
+      const sourceType = cam.source_type || 'rtsp';
+      document.getElementById('camSourceType').value = sourceType;
+      toggleSourceTypeFields();
+      // Set HA entity after loading if needed
+      if (sourceType === 'ha_camera') {
+        loadHACameras().then(() => {
+          document.getElementById('camHaEntity').value = cam.ha_entity_id || '';
+          document.getElementById('camHighresHaEntity').value = cam.highres_ha_entity_id || '';
+        });
+      }
+      document.getElementById('cameraModal').style.display = 'flex';
+    }
+
     function closeCameraModal() { document.getElementById('cameraModal').style.display = 'none'; }
 
     async function saveCamera() {
@@ -750,9 +838,12 @@
       const payload = {
         name,
         source_type: document.getElementById('camSourceType').value,
-        ha_entity_id: document.getElementById('camHaEntity').value,
-        stream_url: document.getElementById('camStreamUrl').value,
-        folder_mapping: document.getElementById('camFolderMapping').value.trim(),
+        ha_entity_id: document.getElementById('camHaEntity').value || null,
+        stream_url: document.getElementById('camStreamUrl').value.trim() || null,
+        folder_mapping: document.getElementById('camFolderMapping').value.trim() || null,
+        highres_stream_url: document.getElementById('camHighresStreamUrl').value.trim() || null,
+        highres_ha_entity_id: document.getElementById('camHighresHaEntity').value || null,
+        fullscreen_highres: document.getElementById('camFullscreenHighres').checked,
       };
       const editId = document.getElementById('camEditId').value;
       if (editId) payload.id = parseInt(editId, 10);
@@ -1070,8 +1161,68 @@
       ['live','archive','cameras','settings'].forEach(t => {
         document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
       });
+      document.getElementById('statsBar').style.display = tab === 'live' ? 'none' : 'grid';
       if (tab === 'archive') loadRecordings();
       if (tab === 'settings') { browseDirectory(); loadSmbSources(); }
+    }
+
+    // -----------------------------------------------------------------------
+    // Camera fullscreen
+    // -----------------------------------------------------------------------
+    let _fsCam = null;
+    let _fsHighres = false;
+
+    function openCamFullscreen(cam) {
+      _fsCam = cam;
+      _fsHighres = false;
+      setText('camFullscreenTitle', cam.name);
+      const hasHighres = !!(cam.highres_stream_url || cam.highres_ha_entity_id);
+      const toggleBtn = document.getElementById('camFsToggleRes');
+      toggleBtn.style.display = hasHighres ? 'inline-flex' : 'none';
+      toggleBtn.innerHTML = '<i class="bi bi-arrows-angle-expand"></i> SWITCH TO HI-RES';
+      _renderFullscreenFeed(cam, false);
+      document.getElementById('camFullscreenModal').style.display = 'flex';
+    }
+
+    function toggleFullscreenRes() {
+      if (!_fsCam) return;
+      _fsHighres = !_fsHighres;
+      const btn = document.getElementById('camFsToggleRes');
+      btn.innerHTML = _fsHighres
+        ? '<i class="bi bi-arrows-angle-contract"></i> SWITCH TO MAIN'
+        : '<i class="bi bi-arrows-angle-expand"></i> SWITCH TO HI-RES';
+      _renderFullscreenFeed(_fsCam, _fsHighres);
+    }
+
+    function _renderFullscreenFeed(cam, highres) {
+      const view = document.getElementById('camFullscreenView');
+      view.innerHTML = '';
+      const useEntity = highres ? (cam.highres_ha_entity_id || cam.ha_entity_id) : cam.ha_entity_id;
+      const useMjpeg = highres ? (cam.highres_stream_url || cam.stream_url) : cam.stream_url;
+      if (useEntity) {
+        const img = document.createElement('img');
+        img.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
+        img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+        img.alt = cam.name;
+        img.onerror = function() { this.onerror=null; view.innerHTML='<div style="color:#64748b;font-family:monospace;">SNAPSHOT UNAVAILABLE</div>'; };
+        view.appendChild(img);
+      } else if ((cam.source_type === 'mjpeg' || highres) && useMjpeg) {
+        const img = document.createElement('img');
+        img.src = useMjpeg;
+        img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+        img.alt = cam.name;
+        view.appendChild(img);
+      } else {
+        view.innerHTML = '<div style="color:#64748b;font-family:monospace;text-align:center;">' +
+          '<i class="bi bi-broadcast-pin" style="font-size:4rem;display:block;margin-bottom:12px;"></i>' +
+          'RTSP stream – not directly displayable in browser</div>';
+      }
+    }
+
+    function closeCamFullscreen() {
+      _fsCam = null;
+      document.getElementById('camFullscreenView').innerHTML = '';
+      document.getElementById('camFullscreenModal').style.display = 'none';
     }
 
     // -----------------------------------------------------------------------

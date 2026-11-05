@@ -38,7 +38,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.1.3",
+    version="1.1.4",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -415,6 +415,9 @@ def _cam_dict(c: Camera) -> dict:
         "substream_url": c.substream_url,
         "ha_entity_id": c.ha_entity_id,
         "folder_mapping": c.folder_mapping,
+        "highres_stream_url": getattr(c, "highres_stream_url", None),
+        "highres_ha_entity_id": getattr(c, "highres_ha_entity_id", None),
+        "fullscreen_highres": bool(getattr(c, "fullscreen_highres", False)),
         "fps": c.fps,
         "enabled": c.enabled,
     }
@@ -450,6 +453,9 @@ async def create_or_update_camera(request: Request, db: Session = Depends(get_db
     camera.substream_url = str(cam.get("substream_url") or "").strip() or None
     camera.ha_entity_id = str(cam.get("ha_entity_id") or "").strip() or None
     camera.folder_mapping = str(cam.get("folder_mapping") or "").strip() or None
+    camera.highres_stream_url = str(cam.get("highres_stream_url") or "").strip() or None
+    camera.highres_ha_entity_id = str(cam.get("highres_ha_entity_id") or "").strip() or None
+    camera.fullscreen_highres = bool(cam.get("fullscreen_highres", False))
     try:
         camera.fps = int(cam.get("fps") or 15)
     except Exception:
