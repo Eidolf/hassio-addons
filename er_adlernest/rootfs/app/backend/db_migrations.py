@@ -6,6 +6,9 @@ import sqlite3
 _ADDITIONS = (
     ("ha_entity_id", "ALTER TABLE cameras ADD COLUMN ha_entity_id VARCHAR(200)"),
     ("folder_mapping", "ALTER TABLE cameras ADD COLUMN folder_mapping VARCHAR(255)"),
+    ("highres_stream_url", "ALTER TABLE cameras ADD COLUMN highres_stream_url VARCHAR(500)"),
+    ("highres_ha_entity_id", "ALTER TABLE cameras ADD COLUMN highres_ha_entity_id VARCHAR(200)"),
+    ("fullscreen_highres", "ALTER TABLE cameras ADD COLUMN fullscreen_highres BOOLEAN NOT NULL DEFAULT 0"),
 )
 
 
@@ -61,6 +64,9 @@ def migrate_database(db_path: str) -> None:
                 if column not in columns:
                     conn.execute(sql)
             _make_stream_url_nullable(conn)
+        recording_columns = {row[1] for row in conn.execute("PRAGMA table_info(recordings)")}
+        if recording_columns and "media_type" not in recording_columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN media_type VARCHAR(10) NOT NULL DEFAULT 'video'")
         if conn.execute("PRAGMA foreign_key_check").fetchone() is not None:
             raise sqlite3.IntegrityError("Foreign key validation failed during migration")
         conn.commit()

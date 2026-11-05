@@ -49,8 +49,8 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(self.conn.execute(
             "SELECT id, name, stream_url, fps, enabled FROM cameras"
         ).fetchall(), [(7, "Existing RTSP", "rtsp://example/live", 15, 1)])
-        self.assertEqual(self.conn.execute("SELECT * FROM recordings").fetchall(),
-                         [(1, 7, "/media/existing.mp4")])
+        self.assertEqual(self.conn.execute("SELECT id, camera_id, file_path, media_type FROM recordings").fetchall(),
+                         [(1, 7, "/media/existing.mp4", "video")])
         self.assertEqual(self.conn.execute("PRAGMA foreign_key_check").fetchall(), [])
         self.assertIsNotNone(self.conn.execute(
             "SELECT name FROM sqlite_master WHERE name='ix_cameras_id'"

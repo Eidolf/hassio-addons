@@ -1,5 +1,8 @@
 """Background indexer: scan a directory tree and register video files in the DB."""
+import hashlib
 import json
+
+from PIL import Image, ImageOps
 import logging
 import os
 import subprocess
@@ -12,7 +15,9 @@ from sqlalchemy.orm import Session
 from models import Recording, Camera, SessionLocal
 
 logger = logging.getLogger("adlernest.indexer")
-SUPPORTED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".ts"}
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".ts"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+SUPPORTED_EXTENSIONS = VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
 # Minimum file age in seconds before a file is treated as fully written
 _STABILITY_SECS = 5
 
@@ -40,6 +45,31 @@ def extract_metadata(file_path: str):
         return 0.0, 1920, 1080, "unknown"
 
 
+def extract_image(image_path: str, thumb_path: str):
+    """Return (0.0, width, height, 'image', has_thumb) for a still image.
+
+    Uses Pillow to read dimensions and write a JPEG thumbnail, respecting
+    EXIF orientation so the thumbnail is always right-side up.
+    """
+    try:
+        with Image.open(image_path) as img:
+            img = ImageOps.exif_transpose(img)
+            width, height = img.size
+            os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
+            thumb = img.copy()
+            thumb.thumbnail((480, 480), Image.LANCZOS)
+            thumb = thumb.convert("RGB")
+            thumb.save(thumb_path, "JPEG", quality=85, optimize=True)
+            return 0.0, width, height, "image", True
+    except Exception as exc:
+        logger.debug("Image thumbnail skipped for %s: %s", image_path, exc)
+        try:
+            width, height = Image.open(image_path).size
+        except Exception:
+            width, height = 0, 0
+        return 0.0, width, height, "image", False
+
+
 def generate_thumbnail(video_path: str, thumb_path: str) -> bool:
     """Generate a JPEG thumbnail. Returns True on success."""
     try:
@@ -62,11 +92,14 @@ def parse_recording_info(file_path: str, root_dir: str, folder_mappings: dict):
     rel = p.relative_to(root_dir)
     parts = rel.parts
 
-    # Longest-prefix folder → camera mapping
-    camera_name = "DefaultCamera"
-    if len(parts) > 1:
-        top_folder = parts[0]
-        camera_name = folder_mappings.get(top_folder, top_folder)
+    # Match complete folder components; prefer the most specific mapping.
+    camera_name = parts[0] if len(parts) > 1 else "DefaultCamera"
+    best_length = -1
+    for folder, name in folder_mappings.items():
+        prefix = tuple(part for part in folder.replace("\\", "/").strip("/").split("/") if part)
+        if prefix and len(prefix) < len(parts) and parts[:len(prefix)] == prefix:
+            if len(prefix) > best_length:
+                camera_name, best_length = name, len(prefix)
 
     try:
         stat = p.stat()
@@ -133,22 +166,32 @@ def scan_directory_sync(root_dir: str, thumb_dir: str = "/data/thumbnails") -> i
                         .first()
                     )
 
-                    if existing:
-                        # Re-index if size or mtime changed
-                        if existing.file_size == stat.st_size and abs(
-                            existing.recorded_at.timestamp() - stat.st_mtime
-                        ) < 1:
-                            skipped += 1
-                            continue
-
                     cam_name, rel_path, fname, size, mtime, recorded_at, event_type = (
                         parse_recording_info(full_path, root_dir, folder_mappings)
                     )
-                    duration, width, height, codec = extract_metadata(full_path)
+                    media_type = "image" if Path(filename).suffix.lower() in IMAGE_EXTENSIONS else "video"
+                    if existing and existing.file_size == stat.st_size and abs(
+                        existing.recorded_at.timestamp() - stat.st_mtime
+                    ) < 1 and existing.media_type == media_type:
+                        # Mapping changes must apply even when the file is unchanged.
+                        if existing.camera_name != cam_name or existing.relative_path != rel_path:
+                            existing.camera_name = cam_name
+                            existing.relative_path = rel_path
+                            updated += 1
+                            if updated % 25 == 0:
+                                db.commit()
+                        else:
+                            skipped += 1
+                        continue
 
-                    thumb_filename = f"thumb_{abs(hash(full_path))}.jpg"
+                    thumb_filename = f"thumb_{hashlib.sha256(full_path.encode()).hexdigest()[:24]}.jpg"
                     thumb_full = os.path.join(thumb_dir, thumb_filename)
-                    if generate_thumbnail(full_path, thumb_full):
+                    if media_type == "image":
+                        duration, width, height, codec, has_thumb = extract_image(full_path, thumb_full)
+                    else:
+                        duration, width, height, codec = extract_metadata(full_path)
+                        has_thumb = generate_thumbnail(full_path, thumb_full)
+                    if has_thumb:
                         thumb_rel = thumb_filename
                     else:
                         thumb_rel = None
@@ -164,6 +207,7 @@ def scan_directory_sync(root_dir: str, thumb_dir: str = "/data/thumbnails") -> i
                         existing.codec = codec
                         existing.recorded_at = recorded_at
                         existing.event_type = event_type
+                        existing.media_type = media_type
                         if thumb_rel:
                             existing.thumbnail_path = thumb_rel
                         updated += 1
@@ -178,6 +222,7 @@ def scan_directory_sync(root_dir: str, thumb_dir: str = "/data/thumbnails") -> i
                             width=width,
                             height=height,
                             codec=codec,
+                            media_type=media_type,
                             recorded_at=recorded_at,
                             event_type=event_type,
                             thumbnail_path=thumb_rel,

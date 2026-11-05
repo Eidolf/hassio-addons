@@ -4,8 +4,9 @@ import logging
 import asyncio
 import urllib.request
 import urllib.error
-from typing import Optional
-from datetime import datetime
+from typing import Optional, Literal
+from datetime import datetime, date, time, timedelta
+import mimetypes
 
 from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,7 +38,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.1.2",
+    version="1.1.3",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -484,6 +485,9 @@ def delete_camera(camera_id: int, db: Session = Depends(get_db)):
 def get_recordings(
     camera: Optional[str] = None,
     event_type: Optional[str] = None,
+    media_type: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -493,6 +497,12 @@ def get_recordings(
         query = query.filter(Recording.camera_name == camera)
     if event_type:
         query = query.filter(Recording.event_type == event_type)
+    if media_type in ("video", "image"):
+        query = query.filter(Recording.media_type == media_type)
+    if date_from:
+        query = query.filter(Recording.recorded_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        query = query.filter(Recording.recorded_at < datetime.combine(date_to + timedelta(days=1), time.min))
     total = query.count()
     records = query.order_by(desc(Recording.recorded_at), desc(Recording.id)).offset(offset).limit(limit).all()
     return {
@@ -506,10 +516,30 @@ def _rec_dict(r: Recording) -> dict:
         "id": r.id, "camera_name": r.camera_name, "filename": r.filename,
         "relative_path": r.relative_path, "file_size": r.file_size,
         "duration": r.duration, "width": r.width, "height": r.height,
-        "codec": r.codec,
+        "codec": r.codec, "media_type": getattr(r, "media_type", "video"),
         "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
         "event_type": r.event_type, "thumbnail_path": r.thumbnail_path,
     }
+
+
+@app.get("/api/recordings/days")
+def get_recording_days(
+    camera: Optional[str] = None,
+    media_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Return list of {date, count} for all days that have recordings."""
+    from sqlalchemy import cast, Date as SADate
+    query = db.query(
+        cast(Recording.recorded_at, SADate).label("day"),
+        func.count(Recording.id).label("cnt"),
+    )
+    if camera:
+        query = query.filter(Recording.camera_name == camera)
+    if media_type in ("video", "image"):
+        query = query.filter(Recording.media_type == media_type)
+    rows = query.group_by("day").order_by(desc("day")).all()
+    return {"days": [{"date": str(r.day), "count": r.cnt} for r in rows]}
 
 
 @app.get("/api/recordings/{rec_id}/stream")
@@ -523,8 +553,10 @@ def stream_video(rec_id: int, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=403, detail="File outside allowed storage")
     if not os.path.exists(rec.file_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
-    return FileResponse(rec.file_path, media_type="video/mp4")
+        raise HTTPException(status_code=404, detail="File not found")
+    # Serve with the correct content type for videos or images
+    content_type = mimetypes.guess_type(rec.file_path)[0] or "application/octet-stream"
+    return FileResponse(rec.file_path, media_type=content_type)
 
 
 @app.get("/api/recordings/{rec_id}/thumbnail")
