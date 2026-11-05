@@ -2,6 +2,15 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.2.3] - 2026-11-06
+
+### Fixed
+- **ASGI & Streaming Stability**:
+  - Replaced `BaseHTTPMiddleware` with pure ASGI middleware (`NormaliseSlashesASGIMiddleware`) to avoid `CancelledError` task drops and buffering deadlocks during HTTP streaming.
+  - Added graceful cancellation handling (`asyncio.CancelledError` and `request.is_disconnected()`) in `/api/ha/camera_stream/` so client disconnects do not trigger 500 crashes.
+  - Fixed `/api/recordings/days` endpoint using SQLite-native `func.strftime('%Y-%m-%d', ...)` instead of `cast(..., Date) GROUP BY "day"`, resolving 500 error on days strip.
+  - Added client-side fallback interval in fullscreen camera view: if HA streaming proxy is unavailable, snapshots are automatically polled every 1s for a live feed.
+
 ## [1.2.2] - 2026-11-06
 
 ### Fixed

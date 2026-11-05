@@ -40,7 +40,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.2.2",
+    version="1.2.3",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -54,34 +54,45 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Ingress path-normalisation middleware
+# Ingress path-normalisation & header middleware (Pure ASGI)
 # HA Ingress prepends a variable prefix; the browser sends requests like
 #   GET /api/hassio_ingress/TOKEN//api/status
 # which leaves an extra leading slash after the prefix is stripped, turning
 # the path seen by uvicorn into  //api/status  → 404.
-# This middleware collapses consecutive slashes in the path to one, without
-# touching the query string or any path parameters.
+# Pure ASGI middleware avoids the task cancellation and buffering bugs of
+# BaseHTTPMiddleware on streaming responses.
 # ---------------------------------------------------------------------------
-class NormaliseSlashesMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        scope = request.scope
-        raw_path: bytes = scope.get("path", "").encode()
-        # collapse //+ → /
-        import re as _re
-        clean = _re.sub(r"/+", "/", scope["path"])
-        if clean != scope["path"]:
-            scope["path"] = clean
-            scope["raw_path"] = clean.encode()
-        response = await call_next(request)
-        # Prevent aggressive browser/HA Ingress caching of HTML/frontend assets
-        path = scope.get("path", "")
-        if path == "" or path == "/" or path.endswith(".html"):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
-        return response
+import re as _re
 
-app.add_middleware(NormaliseSlashesMiddleware)
+class NormaliseSlashesASGIMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            raw_path = scope.get("path", "")
+            clean = _re.sub(r"/+", "/", raw_path)
+            if clean != raw_path:
+                scope["path"] = clean
+                scope["raw_path"] = clean.encode()
+
+            async def send_wrapper(message):
+                if message["type"] == "http.response.start":
+                    path = scope.get("path", "")
+                    if path == "" or path == "/" or path.endswith(".html"):
+                        headers = list(message.get("headers", []))
+                        headers.append((b"cache-control", b"no-cache, no-store, must-revalidate"))
+                        headers.append((b"pragma", b"no-cache"))
+                        headers.append((b"expires", b"0"))
+                        message["headers"] = headers
+                await send(message)
+
+            await self.app(scope, receive, send_wrapper)
+            return
+
+        await self.app(scope, receive, send)
+
+app.add_middleware(NormaliseSlashesASGIMiddleware)
 
 # ---------------------------------------------------------------------------
 # Scanner state
@@ -399,7 +410,7 @@ def proxy_ha_camera(entity_id: str):
 
 
 @app.get("/api/ha/camera_stream/{entity_id:path}")
-async def stream_ha_camera(entity_id: str):
+async def stream_ha_camera(entity_id: str, request: Request):
     """Proxy live MJPEG stream from Home Assistant camera entity with graceful fallback to auto-refreshing snapshot stream."""
     if not entity_id.startswith("camera.") or "/" in entity_id:
         raise HTTPException(status_code=400, detail="Invalid entity id")
@@ -412,24 +423,30 @@ async def stream_ha_camera(entity_id: str):
     headers = {"Authorization": f"Bearer {token}"}
 
     async def iter_stream():
-        timeout = httpx.Timeout(connect=6.0, read=None, write=6.0, pool=6.0)
+        # First attempt: Home Assistant camera_proxy_stream
         stream_worked = False
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=None, write=5.0, pool=5.0)) as client:
                 async with client.stream("GET", url_stream, headers=headers) as resp:
                     if resp.status_code == 200:
                         stream_worked = True
                         async for chunk in resp.aiter_bytes():
+                            if await request.is_disconnected():
+                                break
                             yield chunk
                     else:
-                        logger.info("HA camera_proxy_stream status %s for %s; using snapshot stream fallback", resp.status_code, entity_id)
+                        logger.info("HA camera_proxy_stream status %s for %s, falling back to snapshot stream", resp.status_code, entity_id)
+        except asyncio.CancelledError:
+            return
         except Exception as e:
-            logger.debug("MJPEG HA direct stream attempt for %s: %s", entity_id, e)
+            logger.debug("HA direct stream failed for %s: %s; falling back to snapshot stream", entity_id, e)
 
-        # Fallback: if camera_proxy_stream is not supported by entity, synthesize an MJPEG stream by polling camera_proxy
+        # Fallback: synthesize MJPEG stream by polling camera_proxy
         if not stream_worked:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(4.0)) as client:
                 while True:
+                    if await request.is_disconnected():
+                        break
                     try:
                         r = await client.get(url_proxy, headers=headers)
                         if r.status_code == 200 and r.content:
@@ -440,9 +457,14 @@ async def stream_ha_camera(entity_id: str):
                                 b"\r\n"
                             )
                             yield frame
+                    except asyncio.CancelledError:
+                        break
                     except Exception as exc:
-                        logger.debug("HA snapshot fallback poll error for %s: %s", entity_id, exc)
-                    await asyncio.sleep(1.0)
+                        logger.debug("HA snapshot fallback error for %s: %s", entity_id, exc)
+                    try:
+                        await asyncio.sleep(1.0)
+                    except asyncio.CancelledError:
+                        break
 
     return StreamingResponse(
         iter_stream(),
@@ -721,17 +743,17 @@ def get_recording_days(
     db: Session = Depends(get_db),
 ):
     """Return list of {date, count} for all days that have recordings."""
-    from sqlalchemy import cast, Date as SADate
+    day_col = func.strftime("%Y-%m-%d", Recording.recorded_at)
     query = db.query(
-        cast(Recording.recorded_at, SADate).label("day"),
+        day_col.label("day"),
         func.count(Recording.id).label("cnt"),
     )
     if camera:
         query = query.filter(Recording.camera_name == camera)
     if media_type in ("video", "image"):
         query = query.filter(Recording.media_type == media_type)
-    rows = query.group_by("day").order_by(desc("day")).all()
-    return {"days": [{"date": str(r.day), "count": r.cnt} for r in rows]}
+    rows = query.group_by(day_col).order_by(desc(day_col)).all()
+    return {"days": [{"date": str(r.day), "count": r.cnt} for r in rows if r.day]}
 
 
 @app.get("/api/recordings/{rec_id}/stream")
