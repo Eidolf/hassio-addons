@@ -2,64 +2,47 @@
 
 > **"Your Eagle Eye for Home Assistant Surveillance"**
 
-A modern self-hosted CCTV surveillance and video management solution for Home Assistant, inspired by MotionEye, designed specifically for multi-camera environments, Reolink cameras, and automated NAS/FTP video archive indexing.
+A modern self-hosted CCTV surveillance and video archive manager for Home Assistant.
+Designed for multi-camera environments, Reolink / ONVIF cameras, and automated NAS/FTP video archive indexing.
 
 ---
 
-## 🦅 Features
+## Features
 
-- **Storage-Independent Video Archive**:
-  - Automatically indexes existing video archives uploaded by cameras via FTP or SMB.
-  - Native **Samba/CIFS** mount support right from the add-on configuration.
-  - Local disks and volume mount support (`/share`, `/media`).
-- **Live Multi-Camera Grid**:
-  - Responsive layout supporting 1, 2, 4, 6, 9, and 16 camera feeds.
-  - Reolink PoE / WiFi camera and Doorbell stream optimization.
-  - Generic RTSP, ONVIF, and MJPEG support.
-- **Modern Media Library**:
-  - Fast search by Camera, Date, Time, and Filename.
-  - Automatic event tag classification (`Motion`, `Person`, `Vehicle`, `Doorbell`).
-  - Automated thumbnail generation using FFmpeg.
-- **Home Assistant Ingress Integration**:
-  - Runs directly within the Home Assistant sidebar.
-  - Role-based Home Assistant authentication.
-- **Future Frigate Interoperability**:
-  - Architectural hooks prepared for Frigate event and snapshot database import.
+- **Flexible archive storage**
+  - Browse any HA-provided local path (`/media`, `/share` and their subdirectories)
+  - Connect additional SMB/CIFS network shares directly in the UI — credentials are stored securely on disk, never in config.yaml
+  - Automatic background indexing with size/mtime change detection and thumbnail generation
+- **Home Assistant camera integration**
+  - Import `camera.*` entities from HA via the Supervisor Core API
+  - Display live snapshots in the camera grid (MJPEG streams play directly; RTSP stored for archive mapping)
+- **Archive browser**
+  - Filter by camera, event type (motion, person, vehicle, doorbell)
+  - Video playback with progressive streaming
+- **Ingress integration** — runs entirely in the HA sidebar; no separate port or login required
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-Example add-on configuration in Home Assistant:
+Only the log level needs to be set here. Everything else (storage paths, SMB credentials, cameras) is
+managed in the Web UI under **Storage & System**.
 
 ```yaml
-storage_type: "cifs" # or "local"
-local_path: "/share/er_adlernest/recordings"
-samba_enabled: true
-samba_server: "192.168.1.50"
-samba_share: "cctv_archive"
-samba_username: "cctv_user"
-samba_password: "SecretPassword123"
-scan_interval_minutes: 5
-cameras:
-  - name: "Driveway"
-    source_type: "reolink"
-    url: "rtsp://admin:password@192.168.1.100:554/h264Preview_01_main"
-    substream_url: "rtsp://admin:password@192.168.1.100:554/h264Preview_01_sub"
-    fps: 15
+log_level: "info"   # debug | info | warning | error
 ```
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-- **Backend**: Python 3.12 + FastAPI + SQLite / SQLAlchemy.
-- **Video & Indexing Engine**: Native FFmpeg and FFprobe background indexing service with thumbnail extraction and EXIF/metadata parsing.
-- **Storage Subsystem**: Kernel-level CIFS/Samba mount handler (`cifs-utils`).
-- **Frontend**: Responsive Single Page App styled with Modern Slate/Navy (#0F172A) & Cyan (#06B6D4) Cyber-Eagle theme.
+- **Backend:** Python 3.12 + FastAPI + SQLite/SQLAlchemy
+- **Indexer:** FFmpeg/FFprobe for thumbnail and metadata extraction
+- **Storage:** HA-mounted folders + optional app-managed CIFS mounts (`cifs-utils`)
+- **Frontend:** Single-page app, dark cyber-eagle theme, Bootstrap Icons
 
 ---
 
-## 📄 License
-Copyright (c) Eidolf. Licensed under MIT.
+## License
 
+Copyright (c) Eidolf. Licensed under MIT.

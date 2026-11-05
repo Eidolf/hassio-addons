@@ -1,5 +1,5 @@
 name: "ER-Adlernest"
-version: "1.0.4"
+version: "1.1.0"
 slug: "er_adlernest"
 description: "Your Eagle Eye for Home Assistant Surveillance - Modern CCTV live viewer, archive manager and NAS recording explorer."
 url: "https://github.com/Eidolf/hassio-addons/tree/main/er_adlernest"
@@ -26,10 +26,6 @@ map:
   - "share:rw"
   - "media:rw"
   - "config:rw"
-ports:
-  8098/tcp: 8098
-ports_description:
-  8098/tcp: "ER-Adlernest Web UI / Stream & Archive API"
 options:
   log_level: "info"
 schema:
