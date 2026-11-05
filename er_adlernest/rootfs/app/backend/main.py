@@ -37,7 +37,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.1.1",
+    version="1.1.2",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -494,7 +494,7 @@ def get_recordings(
     if event_type:
         query = query.filter(Recording.event_type == event_type)
     total = query.count()
-    records = query.order_by(desc(Recording.recorded_at)).offset(offset).limit(limit).all()
+    records = query.order_by(desc(Recording.recorded_at), desc(Recording.id)).offset(offset).limit(limit).all()
     return {
         "total": total, "limit": limit, "offset": offset,
         "items": [_rec_dict(r) for r in records],

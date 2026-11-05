@@ -142,6 +142,11 @@
         <div style="margin-left:auto;color:var(--text-muted);font-size:0.85rem;font-family:monospace;" id="archiveCountText">0 RECORDINGS FOUND</div>
       </div>
       <div class="rec-grid" id="recordingsGrid"></div>
+      <nav aria-label="Archive pages" style="display:flex;gap:1rem;align-items:center;justify-content:center;margin-top:1.5rem;flex-wrap:wrap;">
+        <button id="archivePrev" class="nav-btn" onclick="changeArchivePage(-1)" disabled>Previous</button>
+        <span id="archivePageText" aria-live="polite">Page 1 of 1</span>
+        <button id="archiveNext" class="nav-btn" onclick="changeArchivePage(1)" disabled>Next</button>
+      </nav>
     </div>
 
     <!-- Camera Management Tab -->
@@ -506,10 +511,33 @@
     // -----------------------------------------------------------------------
     // Recordings
     // -----------------------------------------------------------------------
-    async function loadRecordings() {
+    const ARCHIVE_PAGE_SIZE = 50;
+    let archiveOffset = 0;
+    let archiveTotal = 0;
+    let archiveLoading = false;
+    let archiveRequestId = 0;
+
+    function updateArchivePagination() {
+      document.getElementById('archivePrev').disabled = archiveLoading || archiveOffset === 0;
+      document.getElementById('archiveNext').disabled = archiveLoading || archiveOffset + ARCHIVE_PAGE_SIZE >= archiveTotal;
+      setText('archivePageText', 'Page ' + (Math.floor(archiveOffset / ARCHIVE_PAGE_SIZE) + 1) +
+        ' of ' + Math.max(1, Math.ceil(archiveTotal / ARCHIVE_PAGE_SIZE)));
+    }
+
+    function changeArchivePage(direction) {
+      if (archiveLoading) return;
+      const offset = archiveOffset + direction * ARCHIVE_PAGE_SIZE;
+      if (offset < 0 || offset >= archiveTotal) return;
+      return loadRecordings(offset);
+    }
+
+    async function loadRecordings(offset = 0) {
+      const requestId = ++archiveRequestId;
+      archiveLoading = true;
+      updateArchivePagination();
       const cam = document.getElementById('filterCamera').value;
       const event = document.getElementById('filterEvent').value;
-      const params = [];
+      const params = ['limit=' + ARCHIVE_PAGE_SIZE, 'offset=' + offset];
       if (cam) params.push('camera=' + encodeURIComponent(cam));
       if (event) params.push('event_type=' + encodeURIComponent(event));
       const qs = params.length ? '?' + params.join('&') : '';
@@ -517,6 +545,9 @@
         const res = await apiFetch('api/recordings' + qs);
         if (!res.ok) return;
         const data = await res.json();
+        if (requestId !== archiveRequestId) return;
+        archiveOffset = offset;
+        archiveTotal = data.total || 0;
         const grid = document.getElementById('recordingsGrid');
         grid.innerHTML = '';
         setText('archiveCountText', (data.total || 0) + ' RECORDINGS FOUND');
@@ -561,6 +592,12 @@
           grid.appendChild(card);
         });
       } catch(e) { console.error('Failed to fetch recordings:', e); }
+      finally {
+        if (requestId === archiveRequestId) {
+          archiveLoading = false;
+          updateArchivePagination();
+        }
+      }
     }
 
     // -----------------------------------------------------------------------
