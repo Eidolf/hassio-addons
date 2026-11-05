@@ -70,7 +70,14 @@ class NormaliseSlashesMiddleware(BaseHTTPMiddleware):
         if clean != scope["path"]:
             scope["path"] = clean
             scope["raw_path"] = clean.encode()
-        return await call_next(request)
+        response = await call_next(request)
+        # Prevent aggressive browser/HA Ingress caching of HTML/frontend assets
+        path = scope.get("path", "")
+        if path == "" or path == "/" or path.endswith(".html"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
 app.add_middleware(NormaliseSlashesMiddleware)
 
