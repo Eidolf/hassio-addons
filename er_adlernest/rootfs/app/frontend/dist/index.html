@@ -107,14 +107,18 @@
     .timeline-controls-bar { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 1rem; background: rgba(7,12,20,0.95); border-top: 1px solid var(--card-border); flex-wrap: wrap; gap: 10px; }
     .timeline-board { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; user-select: none; }
     .timeline-board-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-    .timeline-track-wrap { position: relative; background: #070c14; border: 1px solid var(--card-border); border-radius: 6px; overflow: hidden; cursor: crosshair; }
-    .timeline-ruler { height: 26px; border-bottom: 1px solid var(--card-border); position: relative; background: rgba(15,23,42,0.8); }
-    .timeline-hour-mark { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(100,116,139,0.3); font-size: 0.68rem; color: var(--text-muted); padding-left: 3px; line-height: 24px; font-family: monospace; pointer-events: none; }
+    .timeline-track-wrap { position: relative; background: #070c14; border: 1px solid var(--card-border); border-radius: 6px; overflow: hidden; }
+    .timeline-header-row { display: flex; align-items: center; height: 28px; background: rgba(15,23,42,0.8); border-bottom: 1px solid var(--card-border); }
+    .timeline-header-spacer { width: 140px; flex-shrink: 0; padding: 0 8px; font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; border-right: 1px solid rgba(255,255,255,0.06); height: 100%; box-sizing: border-box; }
+    .timeline-ruler-container { flex: 1; height: 100%; overflow: hidden; position: relative; cursor: pointer; }
+    .timeline-ruler { height: 100%; position: relative; }
+    .timeline-hour-mark { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(100,116,139,0.3); font-size: 0.68rem; color: var(--text-muted); padding-left: 3px; line-height: 26px; font-family: monospace; pointer-events: none; }
     .timeline-tracks-area { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; max-height: 280px; overflow-y: auto; position: relative; }
     .timeline-cam-row { display: flex; align-items: center; height: 32px; position: relative; border-bottom: 1px solid rgba(255,255,255,0.03); }
-    .timeline-cam-label { width: 140px; flex-shrink: 0; padding: 0 8px; font-size: 0.78rem; font-weight: 600; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .timeline-cam-label { width: 140px; flex-shrink: 0; padding: 0 8px; font-size: 0.78rem; font-weight: 600; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 6px; border-right: 1px solid rgba(255,255,255,0.06); height: 100%; box-sizing: border-box; }
     .timeline-cam-label:hover { color: var(--accent); }
-    .timeline-cam-track { flex: 1; height: 100%; position: relative; background: rgba(2,6,23,0.5); }
+    .timeline-tracks-viewport { flex: 1; height: 100%; overflow-x: auto; overflow-y: hidden; position: relative; scrollbar-width: thin; }
+    .timeline-cam-track { flex: 1; height: 100%; position: relative; background: rgba(2,6,23,0.5); cursor: crosshair; }
     .timeline-segment { position: absolute; top: 3px; bottom: 3px; border-radius: 2px; cursor: pointer; transition: opacity 0.15s, transform 0.15s; }
     .timeline-segment:hover { opacity: 0.85; transform: scaleY(1.15); z-index: 10; }
     .seg-regular { background: #38bdf8; }
@@ -122,7 +126,7 @@
     .seg-person { background: #0284c7; }
     .seg-vehicle { background: #10b981; }
     .seg-doorbell { background: #ec4899; }
-    .timeline-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.8); pointer-events: none; z-index: 20; }
+    .timeline-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.8); pointer-events: none; z-index: 25; }
     .timeline-playhead::after { content: ""; position: absolute; top: 0; left: -5px; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #ef4444; }
 
     @media (max-width: 768px) {
@@ -138,7 +142,7 @@
       .camera-manage-actions { justify-content: flex-end; }
       .camera-manage-actions button { flex: 1; justify-content: center; }
       .timeline-video-box { height: 260px; }
-      .timeline-cam-label { width: 90px; font-size: 0.72rem; }
+      .timeline-cam-label, .timeline-header-spacer { width: 95px; font-size: 0.72rem; }
     }
   </style>
 </head>
@@ -239,29 +243,42 @@
               </div>
             </div>
 
-            <!-- Legend -->
-            <div style="display:flex;gap:10px;align-items:center;font-size:0.75rem;flex-wrap:wrap;">
-              <span><span style="display:inline-block;width:10px;height:10px;background:#38bdf8;border-radius:2px;margin-right:4px;"></span>Regular</span>
-              <span><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:4px;"></span>Motion</span>
-              <span><span style="display:inline-block;width:10px;height:10px;background:#0284c7;border-radius:2px;margin-right:4px;"></span>Person</span>
-              <span><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:4px;"></span>Vehicle</span>
-              <span><span style="display:inline-block;width:10px;height:10px;background:#ec4899;border-radius:2px;margin-right:4px;"></span>Doorbell</span>
+            <!-- Legend & Zoom controls -->
+            <div style="display:flex;gap:12px;align-items:center;font-size:0.75rem;flex-wrap:wrap;">
+              <div style="display:flex;gap:10px;align-items:center;">
+                <span><span style="display:inline-block;width:10px;height:10px;background:#38bdf8;border-radius:2px;margin-right:4px;"></span>Regular</span>
+                <span><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:4px;"></span>Motion</span>
+                <span><span style="display:inline-block;width:10px;height:10px;background:#0284c7;border-radius:2px;margin-right:4px;"></span>Person</span>
+                <span><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:4px;"></span>Vehicle</span>
+                <span><span style="display:inline-block;width:10px;height:10px;background:#ec4899;border-radius:2px;margin-right:4px;"></span>Doorbell</span>
+              </div>
+              <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
+                <label style="color:var(--text-muted);font-weight:600;font-size:0.75rem;">ZOOM:</label>
+                <button class="btn-secondary" style="padding:2px 8px;font-size:0.75rem;" onclick="tlSetZoom(1)" id="tlZoom1xBtn" title="24 Hours (1x)">24h</button>
+                <button class="btn-secondary" style="padding:2px 8px;font-size:0.75rem;" onclick="tlSetZoom(2)" id="tlZoom2xBtn" title="12 Hours (2x)">12h</button>
+                <button class="btn-secondary" style="padding:2px 8px;font-size:0.75rem;" onclick="tlSetZoom(4)" id="tlZoom4xBtn" title="6 Hours (4x)">6h</button>
+                <button class="btn-secondary" style="padding:2px 8px;font-size:0.75rem;" onclick="tlSetZoom(8)" id="tlZoom8xBtn" title="3 Hours (8x)">3h</button>
+                <button class="btn-secondary" style="padding:2px 8px;font-size:0.75rem;" onclick="tlSetZoom(16)" id="tlZoom16xBtn" title="1.5 Hours (16x)">1.5h</button>
+              </div>
             </div>
           </div>
 
           <!-- Interactive 24h Ruler & Tracks -->
           <div class="timeline-track-wrap" id="tlTrackWrap">
-            <!-- 24h Ruler (00:00 to 24:00) -->
-            <div class="timeline-ruler" id="tlRuler"></div>
+            <!-- Header row: spacer for camera names + ruler viewport -->
+            <div class="timeline-header-row">
+              <div class="timeline-header-spacer"><i class="bi bi-camera-video" style="margin-right:4px;"></i> Cameras</div>
+              <div class="timeline-ruler-container" id="tlRulerContainer">
+                <div class="timeline-ruler" id="tlRuler"></div>
+                <div class="timeline-playhead" id="tlPlayheadRuler" style="left:0px;"></div>
+              </div>
+            </div>
 
             <!-- Tracks container -->
             <div class="timeline-tracks-area" id="tlTracksArea"></div>
-
-            <!-- Red Playhead marker -->
-            <div class="timeline-playhead" id="tlPlayhead" style="left:0px;"></div>
           </div>
-          <div style="font-size:0.75rem;color:var(--text-muted);display:flex;justify-content:space-between;">
-            <span><i class="bi bi-info-circle"></i> Drag the red marker or click anywhere on the 24h ruler to scrub through time.</span>
+          <div style="font-size:0.75rem;color:var(--text-muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <span><i class="bi bi-info-circle"></i> Drag the red marker or click anywhere on the ruler/tracks to scrub through time. Use Zoom to inspect intervals closely.</span>
             <span id="tlStatsCount" style="font-family:monospace;">0 clips</span>
           </div>
         </div>
@@ -528,6 +545,10 @@
     function setText(id, val) {
       const el = document.getElementById(id);
       if (el) el.textContent = String(val);
+    }
+    function setHtml(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = String(val);
     }
 
     // -----------------------------------------------------------------------
@@ -1449,6 +1470,8 @@
     let tlCurrentClip = null;
     let tlCurrentSec = 0;
     let tlIsDragging = false;
+    let tlZoom = 1; // 1x = 24h, 2x = 12h, 4x = 6h, 8x = 3h, 16x = 1.5h
+    let tlIsSyncingScroll = false;
 
     function initTimelineTab() {
       if (!tlCurrentDate) {
@@ -1457,21 +1480,53 @@
         const dInput = document.getElementById('tlDateInput');
         if (dInput) dInput.value = today;
       }
+      tlUpdateZoomButtons();
       renderTimelineRuler();
       loadTimelineData();
       initTimelineDrag();
     }
 
+    function tlSetZoom(zoomFactor) {
+      tlZoom = zoomFactor;
+      tlUpdateZoomButtons();
+      renderTimelineRuler();
+      renderTimelineTracks();
+      // Ensure current playhead is visible in viewport
+      tlScrollToPlayhead();
+    }
+
+    function tlUpdateZoomButtons() {
+      [1, 2, 4, 8, 16].forEach(z => {
+        const b = document.getElementById('tlZoom' + z + 'xBtn');
+        if (!b) return;
+        if (tlZoom === z) {
+          b.className = 'btn-action';
+        } else {
+          b.className = 'btn-secondary';
+        }
+      });
+    }
+
     function renderTimelineRuler() {
       const ruler = document.getElementById('tlRuler');
-      if (!ruler || ruler.childElementCount > 0) return;
+      if (!ruler) return;
       ruler.innerHTML = '';
-      for (let h = 0; h <= 24; h += 2) {
+      ruler.style.width = (tlZoom * 100) + '%';
+
+      // Step in hours depending on zoom level
+      let stepH = 2;
+      if (tlZoom >= 8) stepH = 0.5;
+      else if (tlZoom >= 4) stepH = 1;
+      else if (tlZoom >= 2) stepH = 1;
+
+      for (let h = 0; h <= 24; h += stepH) {
         const mark = document.createElement('div');
         mark.className = 'timeline-hour-mark';
-        const pct = (h / 24) * 100;
+        const pct = (h / 24.0) * 100.0;
         mark.style.left = pct + '%';
-        mark.textContent = String(h).padStart(2, '0') + ':00';
+        const hour = Math.floor(h);
+        const min = Math.round((h - hour) * 60);
+        mark.textContent = String(hour).padStart(2, '0') + ':' + String(min).padStart(2, '0');
         ruler.appendChild(mark);
       }
     }
@@ -1534,8 +1589,13 @@
           loadTimelineData();
         };
 
+        const viewport = document.createElement('div');
+        viewport.className = 'timeline-tracks-viewport';
+        viewport.onscroll = () => tlSyncScroll(viewport);
+
         const track = document.createElement('div');
         track.className = 'timeline-cam-track';
+        track.style.width = (tlZoom * 100) + '%';
 
         // Filter clips for this camera
         const clips = tlItems.filter(i => i.camera_name === camName);
@@ -1544,7 +1604,7 @@
           seg.className = 'timeline-segment seg-' + (clip.event_type || 'regular');
           const leftPct = (clip.start_sec / 86400.0) * 100.0;
           const durSec = Math.max(clip.duration || 5, 4);
-          const widthPct = Math.max((durSec / 86400.0) * 100.0, 0.25);
+          const widthPct = Math.max((durSec / 86400.0) * 100.0, 0.25 / tlZoom);
           seg.style.left = leftPct + '%';
           seg.style.width = widthPct + '%';
           seg.title = clip.camera_name + ' | ' + new Date(clip.recorded_at).toLocaleTimeString() + ' (' + Math.round(clip.duration) + 's) - ' + (clip.event_type || 'regular');
@@ -1555,12 +1615,50 @@
           track.appendChild(seg);
         });
 
-        row.append(label, track);
+        // Add track playhead indicator
+        const playheadTrack = document.createElement('div');
+        playheadTrack.className = 'timeline-playhead';
+        playheadTrack.setAttribute('data-playhead', 'true');
+        track.appendChild(playheadTrack);
+
+        viewport.appendChild(track);
+        row.append(label, viewport);
         area.appendChild(row);
       });
 
-      // Update playhead position in pixels relative to track wrap
+      // Update playhead position in pixels/percentage
       updatePlayheadVisual();
+    }
+
+    function tlSyncScroll(sourceEl) {
+      if (tlIsSyncingScroll) return;
+      tlIsSyncingScroll = true;
+      const scrollLeft = sourceEl.scrollLeft;
+
+      // Sync ruler container
+      const rulerContainer = document.getElementById('tlRulerContainer');
+      if (rulerContainer && rulerContainer !== sourceEl) {
+        rulerContainer.scrollLeft = scrollLeft;
+      }
+
+      // Sync all track viewports
+      const viewports = document.querySelectorAll('.timeline-tracks-viewport');
+      viewports.forEach(vp => {
+        if (vp !== sourceEl) vp.scrollLeft = scrollLeft;
+      });
+
+      tlIsSyncingScroll = false;
+    }
+
+    function tlScrollToPlayhead() {
+      const rulerContainer = document.getElementById('tlRulerContainer');
+      const ruler = document.getElementById('tlRuler');
+      if (!rulerContainer || !ruler) return;
+      const pct = (tlCurrentSec / 86400.0);
+      const playheadPx = pct * ruler.scrollWidth;
+      const targetScroll = playheadPx - (rulerContainer.clientWidth / 2);
+      rulerContainer.scrollLeft = Math.max(0, targetScroll);
+      tlSyncScroll(rulerContainer);
     }
 
     function initTimelineDrag() {
@@ -1568,8 +1666,22 @@
       if (!wrap || wrap._dragInit) return;
       wrap._dragInit = true;
 
+      // Enable horizontal wheel scroll for track wrap to easily pan left/right
+      wrap.addEventListener('wheel', (e) => {
+        if (tlZoom > 1) {
+          const rulerContainer = document.getElementById('tlRulerContainer');
+          if (rulerContainer) {
+            e.preventDefault();
+            const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+            rulerContainer.scrollLeft += delta;
+            tlSyncScroll(rulerContainer);
+          }
+        }
+      }, { passive: false });
+
       function handleScrub(e) {
         const ruler = document.getElementById('tlRuler');
+        if (!ruler) return;
         const rect = ruler.getBoundingClientRect();
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const offsetX = Math.max(0, Math.min(clientX - rect.left, rect.width));
@@ -1578,7 +1690,19 @@
         scrubTimelineToSec(targetSec);
       }
 
+      function isScrubTarget(e) {
+        const target = e.target;
+        return target && (
+          target.closest('.timeline-cam-track') ||
+          target.closest('.timeline-ruler') ||
+          target.closest('.timeline-ruler-container') ||
+          target.classList.contains('timeline-cam-track') ||
+          target.classList.contains('timeline-ruler')
+        );
+      }
+
       wrap.addEventListener('mousedown', (e) => {
+        if (!isScrubTarget(e)) return;
         tlIsDragging = true;
         handleScrub(e);
       });
@@ -1592,6 +1716,7 @@
       });
 
       wrap.addEventListener('touchstart', (e) => {
+        if (!isScrubTarget(e)) return;
         tlIsDragging = true;
         handleScrub(e);
       }, { passive: true });
@@ -1641,11 +1766,18 @@
     }
 
     function updatePlayheadVisual() {
-      const playhead = document.getElementById('tlPlayhead');
-      const ruler = document.getElementById('tlRuler');
-      if (!playhead || !ruler) return;
       const pct = (tlCurrentSec / 86400.0) * 100.0;
-      playhead.style.left = pct + '%';
+      const pctStr = pct + '%';
+
+      // Update ruler playhead
+      const rulerPlayhead = document.getElementById('tlPlayheadRuler');
+      if (rulerPlayhead) rulerPlayhead.style.left = pctStr;
+
+      // Update playhead on every camera track
+      const trackPlayheads = document.querySelectorAll('.timeline-cam-track [data-playhead="true"]');
+      trackPlayheads.forEach(ph => {
+        ph.style.left = pctStr;
+      });
     }
 
     function updatePlayerTimeDisplay(sec) {
@@ -1678,7 +1810,7 @@
         vid.src = '';
         img.style.display = 'block';
         img.src = getApiUrl('api/recordings/' + clip.id + '/stream');
-        setText('tlPlayPauseBtn', '<i class="bi bi-play-fill"></i> Play');
+        setHtml('tlPlayPauseBtn', '<i class="bi bi-play-fill"></i> Play');
       } else {
         img.style.display = 'none';
         img.src = '';
@@ -1691,7 +1823,7 @@
         vid.onloadedmetadata = () => {
           if (seekOffsetSec > 0) vid.currentTime = seekOffsetSec;
           vid.play().catch(() => {});
-          setText('tlPlayPauseBtn', '<i class="bi bi-pause-fill"></i> Pause');
+          setHtml('tlPlayPauseBtn', '<i class="bi bi-pause-fill"></i> Pause');
         };
       }
     }
@@ -1701,10 +1833,10 @@
       if (vid.style.display === 'none' || !vid.src) return;
       if (vid.paused) {
         vid.play().catch(() => {});
-        setText('tlPlayPauseBtn', '<i class="bi bi-pause-fill"></i> Pause');
+        setHtml('tlPlayPauseBtn', '<i class="bi bi-pause-fill"></i> Pause');
       } else {
         vid.pause();
-        setText('tlPlayPauseBtn', '<i class="bi bi-play-fill"></i> Play');
+        setHtml('tlPlayPauseBtn', '<i class="bi bi-play-fill"></i> Play');
       }
     }
 

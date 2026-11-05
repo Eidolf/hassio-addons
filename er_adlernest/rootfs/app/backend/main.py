@@ -38,7 +38,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.2.0",
+    version="1.2.1",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )

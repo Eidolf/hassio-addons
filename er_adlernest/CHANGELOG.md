@@ -2,6 +2,21 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.2.1] - 2026-11-05
+
+### Fixed
+- **Timeline Ruler & Clip Alignment**:
+  - Aligned the 24h timeline ruler exactly with camera clip tracks by adding an aligned header spacer corresponding to the camera label column width.
+  - Eliminated the offset where timeline segments were shifted relative to the ruler scale and red playhead indicator.
+- **Timeline Play/Pause Button State**:
+  - Fixed HTML rendering of icon and label on `tlPlayPauseBtn` by properly updating `innerHTML` instead of `textContent` (`<i class="bi bi-pause-fill"></i> Pause`).
+
+### Added
+- **Multi-Level Timeline Zoom & Pan**:
+  - Added Timeline Zoom controls: `24h` (1x), `12h` (2x), `6h` (4x), `3h` (8x), and `1.5h` (16x).
+  - Synchronized horizontal scrolling across the ruler and camera tracks with smooth auto-centering on the playhead.
+  - Mouse wheel and drag panning across zoomed timeline sections to quickly locate and scrub key recording events.
+
 ## [1.2.0] - 2026-11-05
 
 ### Added
