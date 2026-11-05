@@ -7,6 +7,8 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+from db_migrations import migrate_database
+
 logger = logging.getLogger("adlernest.models")
 
 DB_PATH = os.getenv("DB_PATH", "/data/db/adlernest.db")
@@ -62,28 +64,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 # ---------------------------------------------------------------------------
-# Versioned additive migrations
+# Schema migrations (including legacy NOT NULL camera URLs)
 # ---------------------------------------------------------------------------
-_MIGRATIONS = [
-    # v1 – columns added after initial release
-    ("cameras", "ha_entity_id", "ALTER TABLE cameras ADD COLUMN ha_entity_id VARCHAR(200)"),
-    ("cameras", "folder_mapping", "ALTER TABLE cameras ADD COLUMN folder_mapping VARCHAR(255)"),
-]
-
-
 def run_migrations() -> None:
-    """Apply any missing schema columns; fatal on unexpected errors."""
+    """Upgrade the SQLite schema; fatal on unexpected errors."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        for table, column, sql in _MIGRATIONS:
-            cur.execute(f"PRAGMA table_info({table})")
-            existing_cols = {row[1] for row in cur.fetchall()}
-            if existing_cols and column not in existing_cols:
-                logger.info("DB migration: adding %s.%s", table, column)
-                cur.execute(sql)
-        conn.commit()
-        conn.close()
+        migrate_database(DB_PATH)
     except sqlite3.Error as exc:
         logger.critical("DB migration failed – cannot start safely: %s", exc)
         raise SystemExit(1) from exc

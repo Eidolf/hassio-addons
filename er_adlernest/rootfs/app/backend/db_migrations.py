@@ -1,0 +1,71 @@
+"""SQLite schema upgrades, independent of the application's ORM."""
+import re
+import sqlite3
+
+
+_ADDITIONS = (
+    ("ha_entity_id", "ALTER TABLE cameras ADD COLUMN ha_entity_id VARCHAR(200)"),
+    ("folder_mapping", "ALTER TABLE cameras ADD COLUMN folder_mapping VARCHAR(255)"),
+)
+
+
+def _make_stream_url_nullable(conn: sqlite3.Connection) -> None:
+    columns = conn.execute("PRAGMA table_info(cameras)").fetchall()
+    if not any(row[1] == "stream_url" and row[3] for row in columns):
+        return
+
+    original_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='cameras'"
+    ).fetchone()[0]
+    # Change only the known legacy declaration; retain all other constraints.
+    new_sql, changed = re.subn(
+        r"(\bstream_url\s+VARCHAR\s*\(\s*500\s*\))\s+NOT\s+NULL\b",
+        r"\1", original_sql, flags=re.IGNORECASE,
+    )
+    if changed != 1:
+        raise sqlite3.DatabaseError("Unsupported legacy cameras.stream_url declaration")
+    new_sql, renamed = re.subn(
+        r'^CREATE\s+TABLE\s+(?:"cameras"|cameras)\s*\(',
+        'CREATE TABLE "cameras_nullable_migration" (',
+        new_sql, count=1, flags=re.IGNORECASE,
+    )
+    if renamed != 1:
+        raise sqlite3.DatabaseError("Unsupported legacy cameras table declaration")
+
+    schema_objects = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE tbl_name='cameras' "
+        "AND type IN ('index', 'trigger') AND sql IS NOT NULL"
+    ).fetchall()
+    names = ", ".join('"' + row[1].replace('"', '""') + '"' for row in columns)
+    conn.execute(new_sql)
+    conn.execute(
+        f'INSERT INTO cameras_nullable_migration ({names}) SELECT {names} FROM cameras'
+    )
+    conn.execute("DROP TABLE cameras")
+    conn.execute("ALTER TABLE cameras_nullable_migration RENAME TO cameras")
+    for (sql,) in schema_objects:
+        conn.execute(sql)
+
+
+def migrate_database(db_path: str) -> None:
+    """Upgrade atomically; preserve camera rows, indexes, triggers and references."""
+    conn = sqlite3.connect(db_path)
+    try:
+        # SQLite's table-rebuild procedure requires FK enforcement disabled before
+        # BEGIN. Validate references before committing instead (no cascade deletes).
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("BEGIN IMMEDIATE")
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(cameras)")}
+        if columns:
+            for column, sql in _ADDITIONS:
+                if column not in columns:
+                    conn.execute(sql)
+            _make_stream_url_nullable(conn)
+        if conn.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise sqlite3.IntegrityError("Foreign key validation failed during migration")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
