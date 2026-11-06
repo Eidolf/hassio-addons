@@ -2,6 +2,18 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.2.5] - 2026-11-06
+
+### Added
+- **Dynamic Stream Buffering & Low Latency Indicators**:
+  - Added `#camFsStatusBadge` in camera fullscreen view displaying `BUFFERING STREAM...` while connecting, `LIVE` / `LIVE 4K` when playing, and `STREAM OFFLINE` with diagnostics on failure.
+  - Implemented dual-layer rendering in fullscreen modal: pre-renders an instant snapshot underneath while FFmpeg connects to eliminate black screens during startup.
+
+### Optimized
+- **4K Ultra HD & RTSP Live Transcoding**:
+  - Added FFmpeg ultra-low latency flags (`-fflags nobuffer -flags low_delay`) and 5s socket timeout (`-stimeout 5000000`) to RTSP-to-MJPEG pipeline.
+  - Added dynamic scaling for high-bandwidth streams: automatically transcodes 4K streams to 1080p (`scale=-2:1080`, 15fps, ~3.5 Mbps) and standard streams to 720p (`scale=-2:720`, 12fps, ~1.5 Mbps) to prevent browser buffer choking, frame drops, and black screen stalls.
+
 ## [1.2.4] - 2026-11-06
 
 ### Fixed
