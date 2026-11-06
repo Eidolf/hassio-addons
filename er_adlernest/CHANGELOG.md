@@ -15,6 +15,14 @@ All notable changes to the ER-Adlernest Home Assistant Add-on will be documented
   - Excluded snapshot images from being rendered as standalone track entities on the timeline, eliminating clutter right before or during video clips and providing a completely clean video-centric timeline.
   - Increased snapshot-to-video correlation window to $\pm 45\text{s}$ to ensure pre-event AI detection snapshots accurately enrich their corresponding video recording.
 
+## [1.2.9] - 2026-11-06
+
+### Changed
+- **Pure Video Timeline Stream**:
+  - Image snapshots are now exclusively used as thumbprints, event descriptors, and overlay hover previews.
+  - Excluded snapshot images from being rendered as standalone track entities on the timeline, eliminating clutter right before or during video clips and providing a completely clean video-centric timeline.
+  - Increased snapshot-to-video correlation window to $\pm 45\text{s}$ to ensure pre-event AI detection snapshots accurately enrich their corresponding video recording.
+
 ## [1.2.8] - 2026-11-06
 
 ### Added
