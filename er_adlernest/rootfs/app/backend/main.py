@@ -20,6 +20,7 @@ from sqlalchemy import desc, func
 
 from models import get_db, Camera, Recording, get_setting, set_setting, run_migrations
 from indexer import scan_directory_sync
+from db_migrations import correlate_timeline_events
 import storage as storage_svc
 
 # ---------------------------------------------------------------------------
@@ -40,7 +41,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.2.6",
+    version="1.2.7",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -792,7 +793,8 @@ def get_timeline_data(
     # Sort ascending for timeline flow
     records = query.order_by(Recording.recorded_at.asc(), Recording.id.asc()).all()
 
-    items = []
+    # Pre-parse recording events
+    raw_items = []
     for r in records:
         start_dt = r.recorded_at
         dur = float(r.duration or 0)
@@ -801,7 +803,7 @@ def get_timeline_data(
             dur = 5.0
         start_sec = start_dt.hour * 3600 + start_dt.minute * 60 + start_dt.second + start_dt.microsecond / 1_000_000.0
         end_sec = min(86400.0, start_sec + dur)
-        items.append({
+        raw_items.append({
             "id": r.id,
             "camera_name": r.camera_name,
             "filename": r.filename,
@@ -813,6 +815,9 @@ def get_timeline_data(
             "media_type": getattr(r, "media_type", "video"),
             "thumbnail_path": r.thumbnail_path,
         })
+
+    # Correlate snapshots (images) to corresponding videos as thumbprints
+    items = correlate_timeline_events(raw_items)
 
     return {
         "date": date,

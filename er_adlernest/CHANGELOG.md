@@ -2,6 +2,16 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.2.7] - 2026-11-06
+
+### Added
+- **Timeline Smart Snapshot Correlation & Video Thumbprints**:
+  - Automatically associates snapshot images to video recordings on the same camera based on recording timestamps.
+  - Snapshot images are no longer listed as redundant separate entities on the timeline; instead, they serve as rich visual thumbprints attached to the corresponding video clip.
+  - Video clips inherit high-priority event types (e.g. `person`, `vehicle`) and detection snapshots from associated images.
+  - At zoom level $\ge 4\times$ (6h, 3h, 1.5h), recording segments expand to 56px height and display the detected image thumbprint directly inside the timeline track bar.
+  - Displays snapshot count badges on segments with multiple AI detections and in the timeline video player header.
+
 ## [1.2.6] - 2026-11-06
 
 ### Added

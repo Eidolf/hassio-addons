@@ -75,3 +75,56 @@ def migrate_database(db_path: str) -> None:
         raise
     finally:
         conn.close()
+
+
+def correlate_timeline_events(raw_items: list) -> list:
+    """Group and correlate snapshots (images) to corresponding videos of the same camera."""
+    by_cam = {}
+    for it in raw_items:
+        by_cam.setdefault(it["camera_name"], []).append(it)
+
+    items = []
+    for cam_name, cam_items in by_cam.items():
+        vids = [i for i in cam_items if i.get("media_type") == "video"]
+        imgs = [i for i in cam_items if i.get("media_type") == "image"]
+
+        vids.sort(key=lambda x: x["start_sec"])
+        for v in vids:
+            v["snapshots"] = []
+
+        unmatched_imgs = []
+        for img in imgs:
+            t = img["start_sec"]
+            matched_vid = None
+            best_diff = float("inf")
+            for v in vids:
+                # Correlate if snapshot occurred within video window (with +/- 15s leeway)
+                if (v["start_sec"] - 15.0) <= t <= (v["end_sec"] + 15.0):
+                    mid = (v["start_sec"] + v["end_sec"]) / 2.0
+                    diff = abs(t - mid)
+                    if diff < best_diff:
+                        best_diff = diff
+                        matched_vid = v
+
+            if matched_vid is not None:
+                matched_vid["snapshots"].append({
+                    "id": img["id"],
+                    "filename": img["filename"],
+                    "recorded_at": img["recorded_at"],
+                    "start_sec": img["start_sec"],
+                    "thumbnail_path": img["thumbnail_path"],
+                    "event_type": img["event_type"],
+                })
+                # If video has no thumbnail yet or snapshot has richer AI detection/event, inherit thumbnail
+                if not matched_vid.get("thumbnail_path") and img.get("thumbnail_path"):
+                    matched_vid["thumbnail_path"] = img["thumbnail_path"]
+                if matched_vid.get("event_type") in ("regular", "motion", None) and img.get("event_type") not in ("regular", "motion", None):
+                    matched_vid["event_type"] = img["event_type"]
+            else:
+                unmatched_imgs.append(img)
+
+        items.extend(vids)
+        items.extend(unmatched_imgs)
+
+    items.sort(key=lambda x: (x["start_sec"], x["id"]))
+    return items
