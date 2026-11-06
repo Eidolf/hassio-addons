@@ -272,3 +272,4 @@ def scan_directory_sync(root_dir: str, thumb_dir: str = "/data/thumbnails") -> i
             root_dir, skipped, errors, elapsed,
         )
     return new_records
+
