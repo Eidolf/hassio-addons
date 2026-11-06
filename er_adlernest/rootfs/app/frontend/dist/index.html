@@ -136,6 +136,65 @@
     .timeline-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.8); pointer-events: none; z-index: 25; }
     .timeline-playhead::after { content: ""; position: absolute; top: 0; left: -5px; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #ef4444; }
 
+    /* Timeline Hover Preview Popover */
+    .timeline-hover-popover {
+      position: fixed;
+      display: none;
+      z-index: 9999;
+      pointer-events: none;
+      background: rgba(15, 23, 42, 0.96);
+      border: 1px solid var(--card-border-glow, rgba(6, 182, 212, 0.4));
+      border-radius: 8px;
+      padding: 6px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.8), 0 0 16px rgba(6, 182, 212, 0.3);
+      backdrop-filter: blur(8px);
+      width: 250px;
+      max-width: 90vw;
+      transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+      transform: translate(-50%, -100%) translateY(-10px);
+      opacity: 0;
+    }
+    .timeline-hover-popover.visible {
+      display: block;
+      opacity: 1;
+      transform: translate(-50%, -100%) translateY(-12px);
+    }
+    .tl-popover-thumb {
+      width: 100%;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 5px;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: block;
+    }
+    .tl-popover-body {
+      padding: 6px 4px 2px 4px;
+    }
+    .tl-popover-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .tl-popover-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #fff;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tl-popover-meta {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: monospace;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 3px;
+    }
+
     @media (max-width: 768px) {
       header { padding: 0.75rem 1rem; flex-wrap: wrap; gap: 10px; }
       .header-actions { width: 100%; justify-content: flex-end; }
@@ -284,6 +343,24 @@
 
             <!-- Tracks container -->
             <div class="timeline-tracks-area" id="tlTracksArea"></div>
+          </div>
+
+          <!-- Floating Popover Preview for Segment Hover -->
+          <div id="tlHoverPopover" class="timeline-hover-popover">
+            <img id="tlPopoverImg" class="tl-popover-thumb" src="" alt="Event Thumbnail" />
+            <div class="tl-popover-body">
+              <div class="tl-popover-header">
+                <span id="tlPopoverTitle" class="tl-popover-title"></span>
+                <span id="tlPopoverBadge" class="rec-tag tag-regular" style="margin:0;font-size:0.6rem;padding:2px 6px;"></span>
+              </div>
+              <div class="tl-popover-meta">
+                <span id="tlPopoverTime"><i class="bi bi-clock"></i> 00:00:00</span>
+                <span id="tlPopoverDur"><i class="bi bi-hourglass-split"></i> 0s</span>
+              </div>
+              <div id="tlPopoverSnaps" style="font-size:0.68rem;color:var(--accent);margin-top:3px;display:none;font-weight:600;">
+                <i class="bi bi-camera"></i> <span id="tlPopoverSnapsText"></span>
+              </div>
+            </div>
           </div>
           <div style="font-size:0.75rem;color:var(--text-muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
             <span><i class="bi bi-info-circle"></i> Drag the red marker or click anywhere on the ruler/tracks to scrub through time. Use Zoom to inspect intervals closely.</span>
@@ -1393,6 +1470,7 @@
 
       // If leaving timeline tab, pause video player to avoid background audio/playback
       if (tab !== 'timeline') {
+        hideTimelinePopover();
         const vid = document.getElementById('tlVideoPlayer');
         if (vid && !vid.paused) {
           vid.pause();
@@ -1716,8 +1794,83 @@
     }
 
     // -----------------------------------------------------------------------
-    // Timeline 24h Engine
+    // Timeline Hover Preview Popover
     // -----------------------------------------------------------------------
+    let _tlPopoverHideTimer = null;
+
+    function showTimelinePopover(e, clip) {
+      if (_tlPopoverHideTimer) {
+        clearTimeout(_tlPopoverHideTimer);
+        _tlPopoverHideTimer = null;
+      }
+      const popover = document.getElementById('tlHoverPopover');
+      if (!popover) return;
+
+      const img = document.getElementById('tlPopoverImg');
+      if (clip.thumbnail_path) {
+        img.src = getApiUrl('api/recordings/' + clip.id + '/thumbnail');
+        img.style.display = 'block';
+      } else if (clip.media_type === 'image') {
+        img.src = getApiUrl('api/recordings/' + clip.id + '/stream');
+        img.style.display = 'block';
+      } else {
+        img.src = '';
+        img.style.display = 'none';
+      }
+
+      setText('tlPopoverTitle', clip.camera_name);
+      const badge = document.getElementById('tlPopoverBadge');
+      if (badge) {
+        badge.className = 'rec-tag tag-' + (clip.event_type || 'regular');
+        badge.textContent = (clip.event_type || 'regular').toUpperCase();
+      }
+
+      const timeStr = new Date(clip.recorded_at).toLocaleTimeString();
+      setText('tlPopoverTime', timeStr);
+      setText('tlPopoverDur', Math.round(clip.duration || 0) + 's (' + (clip.media_type || 'video') + ')');
+
+      const snapsEl = document.getElementById('tlPopoverSnaps');
+      const snapCount = (clip.snapshots && clip.snapshots.length) || 0;
+      if (snapsEl) {
+        if (snapCount > 0) {
+          snapsEl.style.display = 'block';
+          setText('tlPopoverSnapsText', snapCount + ' AI snapshot' + (snapCount > 1 ? 's' : '') + ' matched');
+        } else {
+          snapsEl.style.display = 'none';
+        }
+      }
+
+      // Position popover above the cursor / segment
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      let y = rect.top;
+
+      // Ensure horizontal bounds stay on screen
+      const popoverWidth = 250;
+      const minX = (popoverWidth / 2) + 8;
+      const maxX = window.innerWidth - (popoverWidth / 2) - 8;
+      const clampedX = Math.max(minX, Math.min(x, maxX));
+
+      // If segment is too close to top of viewport, flip popover below segment
+      if (y < 210) {
+        popover.style.transform = 'translate(-50%, 0) translateY(12px)';
+        y = rect.bottom;
+      } else {
+        popover.style.transform = 'translate(-50%, -100%) translateY(-12px)';
+      }
+
+      popover.style.left = clampedX + 'px';
+      popover.style.top = y + 'px';
+      popover.classList.add('visible');
+    }
+
+    function hideTimelinePopover() {
+      if (_tlPopoverHideTimer) clearTimeout(_tlPopoverHideTimer);
+      _tlPopoverHideTimer = setTimeout(() => {
+        const popover = document.getElementById('tlHoverPopover');
+        if (popover) popover.classList.remove('visible');
+      }, 80);
+    }
     let tlCurrentDate = '';
     let tlItems = [];
     let tlCurrentClip = null;
@@ -1897,8 +2050,12 @@
             seg.appendChild(badge);
           }
 
+          seg.onmouseenter = (e) => showTimelinePopover(e, clip);
+          seg.onmouseleave = () => hideTimelinePopover();
+
           seg.onclick = (e) => {
             e.stopPropagation();
+            hideTimelinePopover();
             playTimelineClip(clip, 0);
           };
           track.appendChild(seg);

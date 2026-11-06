@@ -2,6 +2,14 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.2.8] - 2026-11-06
+
+### Added
+- **Timeline Hover Preview Popover**:
+  - Hovering over any recording segment on the timeline displays a tactical popover window with a large preview image (snapshot / thumbnail).
+  - Shows event metadata including camera name, event type tag (`PERSON`, `VEHICLE`, `MOTION`, etc.), exact recording time, duration, and count of correlated AI snapshots.
+  - Automatically calculates viewport constraints, positioning itself above or below the cursor to remain visible at all times.
+
 ## [1.2.7] - 2026-11-06
 
 ### Added
