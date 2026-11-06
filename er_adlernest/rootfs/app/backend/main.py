@@ -40,7 +40,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.2.3",
+    version="1.2.4",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -411,64 +411,46 @@ def proxy_ha_camera(entity_id: str):
 
 @app.get("/api/ha/camera_stream/{entity_id:path}")
 async def stream_ha_camera(entity_id: str, request: Request):
-    """Proxy live MJPEG stream from Home Assistant camera entity with graceful fallback to auto-refreshing snapshot stream."""
+    """Proxy live MJPEG stream from Home Assistant camera entity.
+    Directly streams snapshots with boundary=frame as an ultra-reliable MJPEG feed."""
     if not entity_id.startswith("camera.") or "/" in entity_id:
         raise HTTPException(status_code=400, detail="Invalid entity id")
     token = os.getenv("SUPERVISOR_TOKEN")
     if not token:
         raise HTTPException(status_code=503, detail="Supervisor token missing")
 
-    url_stream = f"http://supervisor/core/api/camera_proxy_stream/{entity_id}"
     url_proxy = f"http://supervisor/core/api/camera_proxy/{entity_id}"
     headers = {"Authorization": f"Bearer {token}"}
 
     async def iter_stream():
-        # First attempt: Home Assistant camera_proxy_stream
-        stream_worked = False
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=None, write=5.0, pool=5.0)) as client:
-                async with client.stream("GET", url_stream, headers=headers) as resp:
-                    if resp.status_code == 200:
-                        stream_worked = True
-                        async for chunk in resp.aiter_bytes():
-                            if await request.is_disconnected():
-                                break
-                            yield chunk
-                    else:
-                        logger.info("HA camera_proxy_stream status %s for %s, falling back to snapshot stream", resp.status_code, entity_id)
-        except asyncio.CancelledError:
-            return
-        except Exception as e:
-            logger.debug("HA direct stream failed for %s: %s; falling back to snapshot stream", entity_id, e)
-
-        # Fallback: synthesize MJPEG stream by polling camera_proxy
-        if not stream_worked:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(4.0)) as client:
-                while True:
-                    if await request.is_disconnected():
-                        break
-                    try:
-                        r = await client.get(url_proxy, headers=headers)
-                        if r.status_code == 200 and r.content:
-                            frame = (
-                                b"--frame\r\n"
-                                b"Content-Type: image/jpeg\r\n\r\n" +
-                                r.content +
-                                b"\r\n"
-                            )
-                            yield frame
-                    except asyncio.CancelledError:
-                        break
-                    except Exception as exc:
-                        logger.debug("HA snapshot fallback error for %s: %s", entity_id, exc)
-                    try:
-                        await asyncio.sleep(1.0)
-                    except asyncio.CancelledError:
-                        break
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=3.0, read=4.0, write=3.0, pool=5.0)) as client:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    r = await client.get(url_proxy, headers=headers)
+                    if r.status_code == 200 and r.content:
+                        # Standard MJPEG boundary formatting
+                        frame = (
+                            b"--frame\r\n"
+                            b"Content-Type: image/jpeg\r\n"
+                            b"Content-Length: " + str(len(r.content)).encode("ascii") + b"\r\n\r\n" +
+                            r.content +
+                            b"\r\n"
+                        )
+                        yield frame
+                except asyncio.CancelledError:
+                    break
+                except Exception as exc:
+                    logger.debug("HA snapshot stream error for %s: %s", entity_id, exc)
+                try:
+                    await asyncio.sleep(0.5)
+                except asyncio.CancelledError:
+                    break
 
     return StreamingResponse(
         iter_stream(),
-        media_type="multipart/x-mixed-replace; boundary=--frame"
+        media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 
@@ -540,7 +522,7 @@ def stream_camera_mjpeg(cam_id: int, highres: bool = Query(False), snapshot: boo
 
     return StreamingResponse(
         iter_ffmpeg(),
-        media_type="multipart/x-mixed-replace; boundary=--frame"
+        media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 # ---------------------------------------------------------------------------

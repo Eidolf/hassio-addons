@@ -2,6 +2,14 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.2.4] - 2026-11-06
+
+### Fixed
+- **Camera Fullscreen MJPEG Streaming**:
+  - Replaced blocking HA `camera_proxy_stream` call with ultra-reliable high-frequency snapshot MJPEG streamer directly from `/api/camera_proxy/`. Home Assistant Core does not send headers on `camera_proxy_stream` without dynamic websocket/query entity tokens, which previously caused the stream to hang indefinitely at `receive_response_headers`.
+  - Corrected MIME `boundary` header parameter from `boundary=--frame` to standard `boundary=frame`.
+  - Added standard `Content-Length` headers per JPEG frame for immediate image decoding in all modern browsers.
+
 ## [1.2.3] - 2026-11-06
 
 ### Fixed

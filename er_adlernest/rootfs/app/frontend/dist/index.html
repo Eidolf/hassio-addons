@@ -1429,13 +1429,13 @@
       const useUrl = highres ? (cam.highres_stream_url || cam.stream_url) : cam.stream_url;
 
       if (useEntity) {
-        // Continuous live MJPEG stream from Home Assistant proxy with direct snapshot refresh on error
+        // High-frequency live MJPEG stream from Home Assistant proxy with direct snapshot refresh on error
         const img = document.createElement('img');
         img.src = getApiUrl('api/ha/camera_stream/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
         img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
         img.alt = cam.name;
         img.onerror = function() {
-          // Fallback to auto-refreshing snapshot directly if stream proxy failed
+          // Direct fallback to polling snapshot if MJPEG connection drops
           this.onerror = null;
           this.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
           if (!window._fsSnapshotInterval) {
@@ -1445,7 +1445,7 @@
                 const entity = _fsHighres ? (_fsCam.highres_ha_entity_id || _fsCam.ha_entity_id) : _fsCam.ha_entity_id;
                 if (entity) fsImg.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(entity)) + '?t=' + Date.now();
               }
-            }, 1000);
+            }, 800);
           }
         };
         view.appendChild(img);
