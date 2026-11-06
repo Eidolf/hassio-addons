@@ -466,35 +466,48 @@ def stream_camera_mjpeg(cam_id: int, highres: bool = Query(False), snapshot: boo
         raise HTTPException(status_code=400, detail="No RTSP stream URL configured for this camera")
 
     if snapshot:
-        # Return a single JPEG snapshot from RTSP
+        # Return a single fast JPEG snapshot from RTSP
         cmd = [
             "ffmpeg",
             "-nostdin",
             "-loglevel", "error",
             "-rtsp_transport", "tcp",
+            "-stimeout", "3000000",
             "-i", rtsp_url,
             "-vframes", "1",
-            "-q:v", "4",
+            "-vf", "scale=-2:720",
+            "-q:v", "5",
             "-f", "image2",
             "-"
         ]
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=6)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5)
             if res.returncode == 0 and res.stdout:
                 return Response(content=res.stdout, media_type="image/jpeg")
             raise HTTPException(status_code=502, detail="Failed to grab camera snapshot")
         except subprocess.TimeoutExpired:
             raise HTTPException(status_code=504, detail="Snapshot capture timed out")
 
+    # HighRes 4K optimization:
+    # 1. '-fflags nobuffer', '-flags low_delay' for ultra-low latency startup
+    # 2. Downscale 4K to max 1080p for MJPEG browser playback (prevents browser/CPU stalling)
+    # 3. Fast ultrafast/threads tuning
+    vf_scale = "scale=-2:1080" if highres else "scale=-2:720"
+    fps_val = str(min(cam.fps or 15, 15 if highres else 12))
+
     cmd = [
         "ffmpeg",
         "-nostdin",
         "-loglevel", "error",
+        "-fflags", "nobuffer",
+        "-flags", "low_delay",
         "-rtsp_transport", "tcp",
+        "-stimeout", "5000000",
         "-i", rtsp_url,
+        "-vf", vf_scale,
         "-c:v", "mjpeg",
-        "-q:v", "4",
-        "-r", str(min(cam.fps or 15, 15)),
+        "-q:v", "5" if highres else "4",
+        "-r", fps_val,
         "-f", "mpjpeg",
         "-boundary_tag", "frame",
         "-"

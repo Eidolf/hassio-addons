@@ -482,7 +482,10 @@
   <div class="modal-overlay" id="camFullscreenModal">
     <div class="modal-box" style="max-width:none;width:100vw;height:100vh;border-radius:0;border:none;">
       <div class="modal-header" style="padding:0.6rem 1.25rem;">
-        <h4 id="camFullscreenTitle" style="color:var(--accent);font-family:monospace;font-size:1rem;"></h4>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h4 id="camFullscreenTitle" style="color:var(--accent);font-family:monospace;font-size:1rem;margin:0;"></h4>
+          <span id="camFsStatusBadge" style="font-size:0.7rem;padding:2px 8px;border-radius:3px;font-weight:700;letter-spacing:0.5px;background:rgba(234,179,8,0.2);color:#facc15;"><i class="bi bi-arrow-repeat spin"></i> CONNECTING...</span>
+        </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <button class="btn-secondary" style="padding:4px 10px;font-size:0.78rem;" id="camFsToggleRes" onclick="toggleFullscreenRes()" title="Switch resolution"></button>
           <button class="btn-secondary" style="padding:4px 10px;" onclick="closeCamFullscreen()"><i class="bi bi-x-lg"></i></button>
@@ -1425,15 +1428,29 @@
     function _renderFullscreenFeed(cam, highres) {
       const view = document.getElementById('camFullscreenView');
       view.innerHTML = '';
+      const badge = document.getElementById('camFsStatusBadge');
+      if (badge) {
+        badge.style.background = 'rgba(234,179,8,0.2)';
+        badge.style.color = '#facc15';
+        badge.innerHTML = '<i class="bi bi-arrow-repeat"></i> BUFFERING STREAM...';
+      }
+
       const useEntity = highres ? (cam.highres_ha_entity_id || cam.ha_entity_id) : cam.ha_entity_id;
       const useUrl = highres ? (cam.highres_stream_url || cam.stream_url) : cam.stream_url;
 
       if (useEntity) {
-        // High-frequency live MJPEG stream from Home Assistant proxy with direct snapshot refresh on error
+        // High-frequency live MJPEG stream from Home Assistant proxy
         const img = document.createElement('img');
         img.src = getApiUrl('api/ha/camera_stream/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
         img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
         img.alt = cam.name;
+        img.onload = function() {
+          if (badge) {
+            badge.style.background = 'rgba(16,185,129,0.2)';
+            badge.style.color = 'var(--success)';
+            badge.innerHTML = '<i class="bi bi-record-fill"></i> LIVE';
+          }
+        };
         img.onerror = function() {
           // Direct fallback to polling snapshot if MJPEG connection drops
           this.onerror = null;
@@ -1454,20 +1471,49 @@
         img.src = useUrl;
         img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
         img.alt = cam.name;
+        img.onload = function() {
+          if (badge) {
+            badge.style.background = 'rgba(16,185,129,0.2)';
+            badge.style.color = 'var(--success)';
+            badge.innerHTML = '<i class="bi bi-record-fill"></i> LIVE';
+          }
+        };
         view.appendChild(img);
       } else if (useUrl) {
-        // Live RTSP / Reolink feed transcoded to live MJPEG stream
-        const img = document.createElement('img');
-        img.src = getApiUrl('api/cameras/' + cam.id + '/stream_mjpeg?highres=' + (highres ? 'true' : 'false')) + '&t=' + Date.now();
-        img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
-        img.alt = cam.name;
-        img.onerror = function() {
+        // 1. Show immediate instant snapshot placeholder so user never stares at a black screen
+        const instantThumb = document.createElement('img');
+        instantThumb.src = getApiUrl('api/cameras/' + cam.id + '/stream_mjpeg?highres=' + (highres ? 'true' : 'false') + '&snapshot=true') + '&t=' + Date.now();
+        instantThumb.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:absolute;inset:0;margin:auto;';
+        instantThumb.alt = cam.name;
+        view.appendChild(instantThumb);
+
+        // 2. Start fast ffmpeg stream and replace snapshot smoothly as soon as stream frames arrive
+        const streamImg = document.createElement('img');
+        streamImg.src = getApiUrl('api/cameras/' + cam.id + '/stream_mjpeg?highres=' + (highres ? 'true' : 'false')) + '&t=' + Date.now();
+        streamImg.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:relative;z-index:2;';
+        streamImg.alt = cam.name;
+        streamImg.onload = function() {
+          if (badge) {
+            badge.style.background = 'rgba(16,185,129,0.2)';
+            badge.style.color = 'var(--success)';
+            badge.innerHTML = '<i class="bi bi-record-fill"></i> LIVE ' + (highres ? '4K' : '');
+          }
+          if (instantThumb && instantThumb.parentElement) {
+            instantThumb.parentElement.removeChild(instantThumb);
+          }
+        };
+        streamImg.onerror = function() {
           this.onerror = null;
+          if (badge) {
+            badge.style.background = 'rgba(239,68,68,0.2)';
+            badge.style.color = 'var(--danger)';
+            badge.innerHTML = 'STREAM OFFLINE';
+          }
           view.innerHTML = '<div style="color:#64748b;font-family:monospace;text-align:center;">' +
             '<i class="bi bi-camera-video-off" style="font-size:3.5rem;display:block;margin-bottom:10px;"></i>' +
             'LIVE STREAM CURRENTLY UNAVAILABLE</div>';
         };
-        view.appendChild(img);
+        view.appendChild(streamImg);
       } else {
         view.innerHTML = '<div style="color:#64748b;font-family:monospace;text-align:center;">' +
           '<i class="bi bi-broadcast-pin" style="font-size:4rem;display:block;margin-bottom:12px;"></i>' +
