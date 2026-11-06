@@ -92,14 +92,13 @@ def correlate_timeline_events(raw_items: list) -> list:
         for v in vids:
             v["snapshots"] = []
 
-        unmatched_imgs = []
         for img in imgs:
             t = img["start_sec"]
             matched_vid = None
             best_diff = float("inf")
             for v in vids:
-                # Correlate if snapshot occurred within video window (with +/- 15s leeway)
-                if (v["start_sec"] - 15.0) <= t <= (v["end_sec"] + 15.0):
+                # Correlate if snapshot occurred near or within video window (with +/- 45s leeway)
+                if (v["start_sec"] - 45.0) <= t <= (v["end_sec"] + 45.0):
                     mid = (v["start_sec"] + v["end_sec"]) / 2.0
                     diff = abs(t - mid)
                     if diff < best_diff:
@@ -120,11 +119,9 @@ def correlate_timeline_events(raw_items: list) -> list:
                     matched_vid["thumbnail_path"] = img["thumbnail_path"]
                 if matched_vid.get("event_type") in ("regular", "motion", None) and img.get("event_type") not in ("regular", "motion", None):
                     matched_vid["event_type"] = img["event_type"]
-            else:
-                unmatched_imgs.append(img)
 
+        # Timeline is strictly videos; images serve exclusively as thumbprints and overlays
         items.extend(vids)
-        items.extend(unmatched_imgs)
 
     items.sort(key=lambda x: (x["start_sec"], x["id"]))
     return items

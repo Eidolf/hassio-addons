@@ -53,8 +53,8 @@ class TimelineCorrelationTests(unittest.TestCase):
 
         items = correlate_timeline_events(raw_items)
 
-        # Expect 2 items: the merged video with snapshot attached, and the standalone snapshot
-        self.assertEqual(len(items), 2)
+        # Timeline displays purely videos: standalone snapshot is excluded from timeline track entities
+        self.assertEqual(len(items), 1)
 
         merged_vid = [i for i in items if i["id"] == 1][0]
         self.assertEqual(merged_vid["media_type"], "video")
@@ -64,10 +64,6 @@ class TimelineCorrelationTests(unittest.TestCase):
         self.assertEqual(merged_vid["thumbnail_path"], "thumb_person_einfahrt.jpg")
         # Promoted event_type to "person"
         self.assertEqual(merged_vid["event_type"], "person")
-
-        solo_item = [i for i in items if i["id"] == 3][0]
-        self.assertEqual(solo_item["media_type"], "image")
-        self.assertEqual(solo_item["thumbnail_path"], "thumb_solo.jpg")
 
 if __name__ == "__main__":
     unittest.main()

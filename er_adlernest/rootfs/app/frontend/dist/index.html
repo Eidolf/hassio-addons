@@ -195,6 +195,148 @@
       margin-top: 3px;
     }
 
+    /* Modern Tactical Date Picker Popover */
+    .datepicker-trigger-btn {
+      background: #070c14;
+      border: 1px solid var(--card-border);
+      color: #fff;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: monospace;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .datepicker-trigger-btn:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+      color: var(--accent);
+    }
+    .datepicker-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid var(--card-border-glow, rgba(6, 182, 212, 0.4));
+      border-radius: 8px;
+      padding: 12px;
+      width: 290px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.85), 0 0 16px rgba(6, 182, 212, 0.2);
+      backdrop-filter: blur(12px);
+      display: none;
+      user-select: none;
+    }
+    .datepicker-dropdown.open {
+      display: block;
+      animation: fadeInPop 0.15s ease-out;
+    }
+    @keyframes fadeInPop {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .dp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .dp-header-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: #fff;
+      font-family: monospace;
+      letter-spacing: 0.5px;
+    }
+    .dp-nav-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .dp-nav-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .dp-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 3px;
+      text-align: center;
+    }
+    .dp-day-name {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      font-weight: 700;
+      padding: 4px 0;
+      text-transform: uppercase;
+    }
+    .dp-cell {
+      height: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s;
+      color: #94a3b8;
+    }
+    .dp-cell:hover:not(.dp-empty) {
+      background: rgba(37, 99, 235, 0.3);
+      color: #fff;
+    }
+    .dp-cell.dp-empty {
+      cursor: default;
+      opacity: 0.2;
+    }
+    .dp-cell.dp-selected {
+      background: var(--primary) !important;
+      color: #fff !important;
+      font-weight: 800;
+      box-shadow: 0 0 10px rgba(37, 99, 235, 0.6);
+      border: 1px solid var(--accent);
+    }
+    .dp-cell.dp-today::after {
+      content: "";
+      position: absolute;
+      bottom: 2px;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .dp-cell.dp-has-recordings::before {
+      content: "";
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+    .dp-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.75rem;
+    }
+
     @media (max-width: 768px) {
       header { padding: 0.75rem 1rem; flex-wrap: wrap; gap: 10px; }
       .header-actions { width: 100%; justify-content: flex-end; }
@@ -298,9 +440,32 @@
         <div class="timeline-board">
           <div class="timeline-board-header">
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-              <div class="filter-group">
+              <div class="filter-group" style="position:relative;">
                 <label style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">DATE:</label>
-                <input type="date" id="tlDateInput" onchange="loadTimelineData()" style="background:#070c14;border:1px solid var(--card-border);color:#fff;padding:5px 10px;border-radius:6px;font-size:0.88rem;cursor:pointer;" />
+                <!-- Native date input kept hidden for accessibility / syncing -->
+                <input type="hidden" id="tlDateInput" onchange="loadTimelineData()" />
+                <!-- Modern Calendar Dropdown Trigger Button -->
+                <button type="button" class="datepicker-trigger-btn" id="tlDatePickerBtn" onclick="toggleTimelineCalendar(event)">
+                  <i class="bi bi-calendar3" style="color:var(--accent);"></i>
+                  <span id="tlDatePickerLabel">YYYY-MM-DD</span>
+                  <i class="bi bi-chevron-down" style="font-size:0.75rem;color:var(--text-muted);"></i>
+                </button>
+
+                <!-- Modern Calendar Popover -->
+                <div class="datepicker-dropdown" id="tlCalendarDropdown">
+                  <div class="dp-header">
+                    <button type="button" class="dp-nav-btn" onclick="tlCalendarNavMonth(-1)"><i class="bi bi-chevron-left"></i></button>
+                    <span class="dp-header-title" id="tlCalMonthTitle">Month Year</span>
+                    <button type="button" class="dp-nav-btn" onclick="tlCalendarNavMonth(1)"><i class="bi bi-chevron-right"></i></button>
+                  </div>
+                  <div class="dp-grid" id="tlCalGrid"></div>
+                  <div class="dp-footer">
+                    <span style="color:var(--text-muted);display:flex;align-items:center;gap:4px;">
+                      <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--success);"></span> Has Footage
+                    </span>
+                    <button type="button" class="btn-secondary" style="padding:2px 8px;font-size:0.75rem;" onclick="tlCalendarSelectToday()">Today</button>
+                  </div>
+                </div>
               </div>
               <div class="filter-group">
                 <label style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">CAMERA FOCUS:</label>
@@ -1827,7 +1992,7 @@
 
       const timeStr = new Date(clip.recorded_at).toLocaleTimeString();
       setText('tlPopoverTime', timeStr);
-      setText('tlPopoverDur', Math.round(clip.duration || 0) + 's (' + (clip.media_type || 'video') + ')');
+      setText('tlPopoverDur', Math.round(clip.duration || 0) + 's');
 
       const snapsEl = document.getElementById('tlPopoverSnaps');
       const snapCount = (clip.snapshots && clip.snapshots.length) || 0;
@@ -1878,18 +2043,160 @@
     let tlIsDragging = false;
     let tlZoom = 1; // 1x = 24h, 2x = 12h, 4x = 6h, 8x = 3h, 16x = 1.5h
     let tlIsSyncingScroll = false;
+    let tlCalViewYear = new Date().getFullYear();
+    let tlCalViewMonth = new Date().getMonth(); // 0-indexed
+    let tlAvailableDaysSet = new Set();
 
     function initTimelineTab() {
       if (!tlCurrentDate) {
         const today = new Date().toISOString().slice(0, 10);
-        tlCurrentDate = today;
-        const dInput = document.getElementById('tlDateInput');
-        if (dInput) dInput.value = today;
+        tlSetDate(today, false);
       }
       tlUpdateZoomButtons();
       renderTimelineRuler();
+      loadTimelineRecordingDays();
       loadTimelineData();
       initTimelineDrag();
+      initCalendarClickOutside();
+    }
+
+    function tlSetDate(dateStr, reload = true) {
+      tlCurrentDate = dateStr;
+      const dInput = document.getElementById('tlDateInput');
+      if (dInput) dInput.value = dateStr;
+      const dLabel = document.getElementById('tlDatePickerLabel');
+      if (dLabel) dLabel.textContent = dateStr;
+      setText('tlPlayerDate', dateStr);
+      if (reload) {
+        loadTimelineData();
+      }
+    }
+
+    async function loadTimelineRecordingDays() {
+      try {
+        const res = await apiFetch('api/recordings/days?media_type=video');
+        if (res.ok) {
+          const data = await res.json();
+          tlAvailableDaysSet = new Set((data.days || []).map(d => d.date));
+          if (document.getElementById('tlCalendarDropdown') && document.getElementById('tlCalendarDropdown').classList.contains('open')) {
+            renderTimelineCalendar();
+          }
+        }
+      } catch (e) {
+        console.debug('Failed to load recording days:', e);
+      }
+    }
+
+    function toggleTimelineCalendar(e) {
+      if (e) e.stopPropagation();
+      const dd = document.getElementById('tlCalendarDropdown');
+      if (!dd) return;
+      if (dd.classList.contains('open')) {
+        dd.classList.remove('open');
+      } else {
+        if (tlCurrentDate) {
+          const parts = tlCurrentDate.split('-');
+          if (parts.length === 3) {
+            tlCalViewYear = parseInt(parts[0], 10);
+            tlCalViewMonth = parseInt(parts[1], 10) - 1;
+          }
+        }
+        renderTimelineCalendar();
+        dd.classList.add('open');
+      }
+    }
+
+    function tlCalendarNavMonth(delta) {
+      tlCalViewMonth += delta;
+      if (tlCalViewMonth < 0) {
+        tlCalViewMonth = 11;
+        tlCalViewYear--;
+      } else if (tlCalViewMonth > 11) {
+        tlCalViewMonth = 0;
+        tlCalViewYear++;
+      }
+      renderTimelineCalendar();
+    }
+
+    function renderTimelineCalendar() {
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      setText('tlCalMonthTitle', monthNames[tlCalViewMonth] + ' ' + tlCalViewYear);
+
+      const grid = document.getElementById('tlCalGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      // Day headers Mon - Sun
+      const dayHeaders = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+      dayHeaders.forEach(d => {
+        const el = document.createElement('div');
+        el.className = 'dp-day-name';
+        el.textContent = d;
+        grid.appendChild(el);
+      });
+
+      // First day of month (Monday = 0, Sunday = 6)
+      const firstDay = new Date(tlCalViewYear, tlCalViewMonth, 1).getDay();
+      const offset = (firstDay + 6) % 7; // Convert Sun(0) to index 6, Mon(1) to index 0
+
+      // Empty leading days
+      for (let i = 0; i < offset; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = 'dp-cell dp-empty';
+        grid.appendChild(emptyCell);
+      }
+
+      const totalDays = new Date(tlCalViewYear, tlCalViewMonth + 1, 0).getDate();
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      for (let day = 1; day <= totalDays; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'dp-cell';
+        cell.textContent = day;
+
+        const dateStr = tlCalViewYear + '-' +
+          String(tlCalViewMonth + 1).padStart(2, '0') + '-' +
+          String(day).padStart(2, '0');
+
+        if (dateStr === tlCurrentDate) {
+          cell.classList.add('dp-selected');
+        }
+        if (dateStr === todayStr) {
+          cell.classList.add('dp-today');
+        }
+        if (tlAvailableDaysSet.has(dateStr)) {
+          cell.classList.add('dp-has-recordings');
+          cell.title = 'Footage recorded on this day';
+        }
+
+        cell.onclick = (e) => {
+          e.stopPropagation();
+          tlSetDate(dateStr, true);
+          document.getElementById('tlCalendarDropdown').classList.remove('open');
+        };
+
+        grid.appendChild(cell);
+      }
+    }
+
+    function tlCalendarSelectToday() {
+      const today = new Date().toISOString().slice(0, 10);
+      tlSetDate(today, true);
+      document.getElementById('tlCalendarDropdown').classList.remove('open');
+    }
+
+    function initCalendarClickOutside() {
+      if (window._tlCalClickInit) return;
+      window._tlCalClickInit = true;
+      document.addEventListener('click', (e) => {
+        const dd = document.getElementById('tlCalendarDropdown');
+        const btn = document.getElementById('tlDatePickerBtn');
+        if (dd && dd.classList.contains('open')) {
+          if (!dd.contains(e.target) && (!btn || !btn.contains(e.target))) {
+            dd.classList.remove('open');
+          }
+        }
+      });
     }
 
     function tlSetZoom(zoomFactor) {
