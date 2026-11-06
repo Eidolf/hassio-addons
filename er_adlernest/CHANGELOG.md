@@ -2,6 +2,20 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.2.6] - 2026-11-06
+
+### Added
+- **Native WebRTC & HLS Fullscreen Live Player with Audio**:
+  - Fullscreen view upgraded from MJPEG to HTML5 `<video>` supporting native Home Assistant WebRTC (`camera/webrtc/offer`) and HLS (`camera/stream`).
+  - Added direct audio playback support from camera entities (unmuted/controllable live audio feed).
+  - Sub-second instant playback for High-Res (4K) streams via hardware-accelerated video decoder.
+  - Added backend WebSocket proxy endpoints `/api/ha/camera_webrtc/{entity_id}` and `/api/ha/camera_hls/{entity_id}` for standalone browser access.
+  - Vendored full `hls.min.js` (v1.5.17) for fast HLS streaming with audio on desktop and mobile browsers.
+  - Added spinning animation to `camFsStatusBadge` during stream negotiation.
+
+### Changed
+- Live Matrix grid overview remains on efficient 5-second snapshot polling, preserving bandwidth while reserving full-rate 4K and audio streaming for fullscreen view.
+
 ## [1.2.5] - 2026-11-06
 
 ### Added

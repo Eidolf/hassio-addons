@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ER-Adlernest - Tactical CCTV Matrix & Archive</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <script src="vendor/hls.min.js"></script>
   <style>
     :root {
       --bg-dark: #070c14; --bg-surface: #0f172a; --card-bg: #141e33; --card-border: #1e2d4a;
@@ -14,6 +15,8 @@
       --danger: #ef4444; --success: #10b981; --warning: #f59e0b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
     html, body { max-width: 100%; overflow-x: hidden; }
     body { background-color: var(--bg-dark); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; background-image: radial-gradient(#1e293b 1px, transparent 1px); background-size: 32px 32px; }
     header { background: rgba(11,17,32,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--card-border); padding: 0.75rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
@@ -1402,6 +1405,28 @@
     // -----------------------------------------------------------------------
     let _fsCam = null;
     let _fsHighres = false;
+    let _fsPeerConnection = null;
+    let _fsHls = null;
+    let _fsSessionEpoch = 0;
+
+    function _fsCleanupStream() {
+      if (_fsPeerConnection) {
+        try {
+          _fsPeerConnection.close();
+        } catch (_) {}
+        _fsPeerConnection = null;
+      }
+      if (_fsHls) {
+        try {
+          _fsHls.destroy();
+        } catch (_) {}
+        _fsHls = null;
+      }
+      if (window._fsSnapshotInterval) {
+        clearInterval(window._fsSnapshotInterval);
+        window._fsSnapshotInterval = null;
+      }
+    }
 
     function openCamFullscreen(cam) {
       _fsCam = cam;
@@ -1425,90 +1450,246 @@
       _renderFullscreenFeed(_fsCam, _fsHighres);
     }
 
-    function _renderFullscreenFeed(cam, highres) {
-      const view = document.getElementById('camFullscreenView');
-      view.innerHTML = '';
+    function _setFsStatus(type, text) {
       const badge = document.getElementById('camFsStatusBadge');
-      if (badge) {
+      if (!badge) return;
+      if (type === 'live') {
+        badge.style.background = 'rgba(16,185,129,0.2)';
+        badge.style.color = 'var(--success)';
+        badge.innerHTML = '<i class="bi bi-record-fill"></i> ' + (text || 'LIVE');
+      } else if (type === 'buffering') {
         badge.style.background = 'rgba(234,179,8,0.2)';
         badge.style.color = '#facc15';
-        badge.innerHTML = '<i class="bi bi-arrow-repeat"></i> BUFFERING STREAM...';
+        badge.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> ' + (text || 'BUFFERING STREAM...');
+      } else {
+        badge.style.background = 'rgba(239,68,68,0.2)';
+        badge.style.color = 'var(--danger)';
+        badge.innerHTML = '<i class="bi bi-exclamation-triangle"></i> ' + (text || 'OFFLINE');
       }
+    }
+
+    async function _connectHaNativeStream(entityId, videoEl, sessionEpoch, cam, highres) {
+      // 1. Check for Home Assistant WebSocket connection (window.parent.hassConnection or window.hassConnection)
+      const hassConn = (window.parent && window.parent.hassConnection) || window.hassConnection;
+
+      // --- Attempt 1: WebRTC via hassConnection or Backend WebSocket Proxy ---
+      try {
+        if (window.RTCPeerConnection) {
+          const pc = new RTCPeerConnection({
+            iceServers: [
+              { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+            ]
+          });
+          _fsPeerConnection = pc;
+
+          pc.ontrack = (event) => {
+            if (_fsSessionEpoch !== sessionEpoch) return;
+            if (event.streams && event.streams[0]) {
+              videoEl.srcObject = event.streams[0];
+            } else {
+              const stream = new MediaStream();
+              stream.addTrack(event.track);
+              videoEl.srcObject = stream;
+            }
+            videoEl.play().catch(e => console.debug('Autoplay audio/video blocked:', e));
+          };
+
+          pc.addTransceiver('video', { direction: 'recvonly' });
+          pc.addTransceiver('audio', { direction: 'recvonly' });
+
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          // Wait brief moment for local candidates
+          await new Promise(r => setTimeout(r, 200));
+          if (_fsSessionEpoch !== sessionEpoch) return;
+
+          let sdpAnswer = null;
+          if (hassConn && hassConn.conn && typeof hassConn.conn.sendMessagePromise === 'function') {
+            try {
+              const res = await hassConn.conn.sendMessagePromise({
+                type: 'camera/webrtc/offer',
+                entity_id: entityId,
+                offer: pc.localDescription.sdp
+              });
+              if (res && res.answer) sdpAnswer = res.answer;
+            } catch (err) {
+              console.debug('Frontend hassConnection webrtc offer rejected:', err);
+            }
+          }
+
+          if (!sdpAnswer) {
+            // Fallback to backend WebRTC proxy
+            try {
+              const res = await apiFetch('api/ha/camera_webrtc/' + encodeURIComponent(entityId), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ offer: pc.localDescription.sdp })
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (data.answer) sdpAnswer = data.answer;
+              }
+            } catch (err) {
+              console.debug('Backend webrtc proxy rejected:', err);
+            }
+          }
+
+          if (sdpAnswer && _fsSessionEpoch === sessionEpoch) {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: sdpAnswer }));
+            return; // WebRTC negotiated successfully!
+          }
+        }
+      } catch (err) {
+        console.debug('WebRTC connection failed, trying HLS:', err);
+      }
+
+      if (_fsSessionEpoch !== sessionEpoch) return;
+      if (_fsPeerConnection) {
+        try { _fsPeerConnection.close(); } catch(_) {}
+        _fsPeerConnection = null;
+      }
+
+      // --- Attempt 2: HLS Stream via hassConnection or Backend Proxy ---
+      let hlsUrl = null;
+      if (hassConn && hassConn.conn && typeof hassConn.conn.sendMessagePromise === 'function') {
+        try {
+          const res = await hassConn.conn.sendMessagePromise({
+            type: 'camera/stream',
+            entity_id: entityId
+          });
+          if (res && res.url) hlsUrl = res.url;
+        } catch (err) {
+          console.debug('Frontend hassConnection camera/stream rejected:', err);
+        }
+      }
+
+      if (!hlsUrl) {
+        try {
+          const res = await apiFetch('api/ha/camera_hls/' + encodeURIComponent(entityId));
+          if (res.ok) {
+            const data = await res.json();
+            if (data.url) hlsUrl = data.url;
+          }
+        } catch (err) {
+          console.debug('Backend camera_hls fetch rejected:', err);
+        }
+      }
+
+      if (hlsUrl && _fsSessionEpoch === sessionEpoch) {
+        if (window.Hls && Hls.isSupported()) {
+          const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 30
+          });
+          _fsHls = hls;
+          hls.loadSource(hlsUrl);
+          hls.attachMedia(videoEl);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            if (_fsSessionEpoch === sessionEpoch) {
+              videoEl.play().catch(e => console.debug('Autoplay video blocked:', e));
+            }
+          });
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+              console.warn('HLS fatal error:', data.type);
+              _fallbackToMjpeg(cam, highres, entityId);
+            }
+          });
+          return;
+        } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+          // Native Safari HLS
+          videoEl.src = hlsUrl;
+          videoEl.play().catch(e => console.debug('Safari autoplay blocked:', e));
+          return;
+        }
+      }
+
+      // --- Attempt 3: MJPEG stream fallback ---
+      _fallbackToMjpeg(cam, highres, entityId);
+    }
+
+    function _fallbackToMjpeg(cam, highres, entityId) {
+      const view = document.getElementById('camFullscreenView');
+      if (!view) return;
+      _fsCleanupStream();
+      view.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = getApiUrl('api/ha/camera_stream/' + encodeURIComponent(entityId)) + '?t=' + Date.now();
+      img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+      img.alt = cam.name;
+      img.onload = () => _setFsStatus('live', 'LIVE MJPEG');
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(entityId)) + '?t=' + Date.now();
+        _setFsStatus('buffering', 'RECONNECTING...');
+      };
+      view.appendChild(img);
+    }
+
+    function _renderFullscreenFeed(cam, highres) {
+      _fsSessionEpoch++;
+      const currentEpoch = _fsSessionEpoch;
+      _fsCleanupStream();
+
+      const view = document.getElementById('camFullscreenView');
+      view.innerHTML = '';
+      _setFsStatus('buffering', highres ? 'BUFFERING HIGH-RES...' : 'BUFFERING STREAM...');
 
       const useEntity = highres ? (cam.highres_ha_entity_id || cam.ha_entity_id) : cam.ha_entity_id;
       const useUrl = highres ? (cam.highres_stream_url || cam.stream_url) : cam.stream_url;
 
       if (useEntity) {
-        // High-frequency live MJPEG stream from Home Assistant proxy
-        const img = document.createElement('img');
-        img.src = getApiUrl('api/ha/camera_stream/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
-        img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
-        img.alt = cam.name;
-        img.onload = function() {
-          if (badge) {
-            badge.style.background = 'rgba(16,185,129,0.2)';
-            badge.style.color = 'var(--success)';
-            badge.innerHTML = '<i class="bi bi-record-fill"></i> LIVE';
+        // Native video container with audio support (WebRTC / HLS)
+        const video = document.createElement('video');
+        video.id = 'camFsVideo';
+        video.autoplay = true;
+        video.playsInline = true;
+        video.controls = true;
+        video.style.cssText = 'max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;background:#000;';
+
+        video.onplaying = function() {
+          if (_fsSessionEpoch === currentEpoch) {
+            _setFsStatus('live', (highres ? 'LIVE 4K' : 'LIVE') + ' (AUDIO READY)');
           }
         };
-        img.onerror = function() {
-          // Direct fallback to polling snapshot if MJPEG connection drops
-          this.onerror = null;
-          this.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(useEntity)) + '?t=' + Date.now();
-          if (!window._fsSnapshotInterval) {
-            window._fsSnapshotInterval = setInterval(() => {
-              const fsImg = document.querySelector('#camFullscreenView img');
-              if (fsImg && _fsCam) {
-                const entity = _fsHighres ? (_fsCam.highres_ha_entity_id || _fsCam.ha_entity_id) : _fsCam.ha_entity_id;
-                if (entity) fsImg.src = getApiUrl('api/ha/camera_proxy/' + encodeURIComponent(entity)) + '?t=' + Date.now();
-              }
-            }, 800);
+        video.onwaiting = function() {
+          if (_fsSessionEpoch === currentEpoch) {
+            _setFsStatus('buffering', 'BUFFERING...');
           }
         };
-        view.appendChild(img);
+
+        view.appendChild(video);
+        _connectHaNativeStream(useEntity, video, currentEpoch, cam, highres);
       } else if (cam.source_type === 'mjpeg' && useUrl) {
         const img = document.createElement('img');
         img.src = useUrl;
         img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
         img.alt = cam.name;
-        img.onload = function() {
-          if (badge) {
-            badge.style.background = 'rgba(16,185,129,0.2)';
-            badge.style.color = 'var(--success)';
-            badge.innerHTML = '<i class="bi bi-record-fill"></i> LIVE';
-          }
-        };
+        img.onload = () => _setFsStatus('live', 'LIVE');
         view.appendChild(img);
       } else if (useUrl) {
-        // 1. Show immediate instant snapshot placeholder so user never stares at a black screen
+        // RTSP Direct Stream: show instant snapshot and connect ffmpeg stream
         const instantThumb = document.createElement('img');
         instantThumb.src = getApiUrl('api/cameras/' + cam.id + '/stream_mjpeg?highres=' + (highres ? 'true' : 'false') + '&snapshot=true') + '&t=' + Date.now();
         instantThumb.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:absolute;inset:0;margin:auto;';
         instantThumb.alt = cam.name;
         view.appendChild(instantThumb);
 
-        // 2. Start fast ffmpeg stream and replace snapshot smoothly as soon as stream frames arrive
         const streamImg = document.createElement('img');
         streamImg.src = getApiUrl('api/cameras/' + cam.id + '/stream_mjpeg?highres=' + (highres ? 'true' : 'false')) + '&t=' + Date.now();
         streamImg.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;position:relative;z-index:2;';
         streamImg.alt = cam.name;
         streamImg.onload = function() {
-          if (badge) {
-            badge.style.background = 'rgba(16,185,129,0.2)';
-            badge.style.color = 'var(--success)';
-            badge.innerHTML = '<i class="bi bi-record-fill"></i> LIVE ' + (highres ? '4K' : '');
-          }
+          _setFsStatus('live', 'LIVE ' + (highres ? '4K' : ''));
           if (instantThumb && instantThumb.parentElement) {
             instantThumb.parentElement.removeChild(instantThumb);
           }
         };
         streamImg.onerror = function() {
           this.onerror = null;
-          if (badge) {
-            badge.style.background = 'rgba(239,68,68,0.2)';
-            badge.style.color = 'var(--danger)';
-            badge.innerHTML = 'STREAM OFFLINE';
-          }
+          _setFsStatus('offline', 'STREAM OFFLINE');
           view.innerHTML = '<div style="color:#64748b;font-family:monospace;text-align:center;">' +
             '<i class="bi bi-camera-video-off" style="font-size:3.5rem;display:block;margin-bottom:10px;"></i>' +
             'LIVE STREAM CURRENTLY UNAVAILABLE</div>';
@@ -1523,10 +1704,8 @@
 
     function closeCamFullscreen() {
       _fsCam = null;
-      if (window._fsSnapshotInterval) {
-        clearInterval(window._fsSnapshotInterval);
-        window._fsSnapshotInterval = null;
-      }
+      _fsSessionEpoch++;
+      _fsCleanupStream();
       document.getElementById('camFullscreenView').innerHTML = '';
       document.getElementById('camFullscreenModal').style.display = 'none';
     }

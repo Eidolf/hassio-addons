@@ -40,7 +40,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.2.5",
+    version="1.2.6",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -452,6 +452,97 @@ async def stream_ha_camera(entity_id: str, request: Request):
         iter_stream(),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+
+@app.get("/api/ha/camera_hls/{entity_id:path}")
+async def get_ha_camera_hls(entity_id: str):
+    """Retrieve HLS stream playlist URL from Home Assistant Core via WebSocket."""
+    if not entity_id.startswith("camera.") or "/" in entity_id:
+        raise HTTPException(status_code=400, detail="Invalid entity id")
+    token = os.getenv("SUPERVISOR_TOKEN")
+    if not token:
+        raise HTTPException(status_code=503, detail="Supervisor token missing")
+
+    ws_url = "ws://supervisor/core/websocket"
+    try:
+        import websockets
+        async with websockets.connect(ws_url) as ws:
+            # 1. HA sends auth_required
+            msg = json.loads(await ws.recv())
+            if msg.get("type") != "auth_required":
+                raise HTTPException(status_code=502, detail=f"Unexpected initial message: {msg.get('type')}")
+            # 2. Authenticate
+            await ws.send(json.dumps({"type": "auth", "access_token": token}))
+            auth_res = json.loads(await ws.recv())
+            if auth_res.get("type") != "auth_ok":
+                raise HTTPException(status_code=401, detail="Core WebSocket authentication failed")
+            # 3. Request camera stream
+            req_id = 1
+            await ws.send(json.dumps({
+                "id": req_id,
+                "type": "camera/stream",
+                "entity_id": entity_id
+            }))
+            resp = json.loads(await ws.recv())
+            if not resp.get("success"):
+                err = resp.get("error", {}).get("message", "Stream request rejected")
+                raise HTTPException(status_code=502, detail=f"HA camera/stream failed: {err}")
+            url = resp.get("result", {}).get("url")
+            if not url:
+                raise HTTPException(status_code=502, detail="No stream URL returned by Home Assistant")
+            return {"url": url}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to fetch HLS stream for %s: %s", entity_id, exc)
+        raise HTTPException(status_code=502, detail=f"Failed to communicate with HA Core stream engine: {exc}")
+
+
+@app.post("/api/ha/camera_webrtc/{entity_id:path}")
+async def proxy_ha_camera_webrtc(entity_id: str, request: Request):
+    """Proxy WebRTC offer/answer session to Home Assistant Core via WebSocket."""
+    if not entity_id.startswith("camera.") or "/" in entity_id:
+        raise HTTPException(status_code=400, detail="Invalid entity id")
+    token = os.getenv("SUPERVISOR_TOKEN")
+    if not token:
+        raise HTTPException(status_code=503, detail="Supervisor token missing")
+
+    body = await request.json()
+    offer = body.get("offer")
+    if not offer:
+        raise HTTPException(status_code=400, detail="SDP offer missing")
+
+    ws_url = "ws://supervisor/core/websocket"
+    try:
+        import websockets
+        async with websockets.connect(ws_url) as ws:
+            msg = json.loads(await ws.recv())
+            if msg.get("type") != "auth_required":
+                raise HTTPException(status_code=502, detail=f"Unexpected initial message: {msg.get('type')}")
+            await ws.send(json.dumps({"type": "auth", "access_token": token}))
+            auth_res = json.loads(await ws.recv())
+            if auth_res.get("type") != "auth_ok":
+                raise HTTPException(status_code=401, detail="Core WebSocket authentication failed")
+            req_id = 1
+            await ws.send(json.dumps({
+                "id": req_id,
+                "type": "camera/webrtc/offer",
+                "entity_id": entity_id,
+                "offer": offer
+            }))
+            resp = json.loads(await ws.recv())
+            if not resp.get("success"):
+                err = resp.get("error", {}).get("message", "WebRTC offer rejected")
+                raise HTTPException(status_code=502, detail=f"HA WebRTC offer failed: {err}")
+            answer = resp.get("result", {}).get("answer")
+            session_id = resp.get("result", {}).get("session_id")
+            return {"answer": answer, "session_id": session_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.debug("Failed to negotiate WebRTC for %s: %s", entity_id, exc)
+        raise HTTPException(status_code=502, detail=f"WebRTC negotiation error: {exc}")
+
 
 
 @app.get("/api/cameras/{cam_id}/stream_mjpeg")
