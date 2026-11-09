@@ -20,7 +20,7 @@ from sqlalchemy import desc, func
 
 from models import get_db, Camera, Recording, get_setting, set_setting, run_migrations
 from indexer import scan_directory_sync
-from db_migrations import correlate_timeline_events
+from db_migrations import correlate_timeline_events, run_retention_cleanup_sync
 import storage as storage_svc
 
 # ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.2.9",
+    version="1.3.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -123,6 +123,16 @@ async def run_scan_async():
     try:
         loop = asyncio.get_event_loop()
         new_count = await loop.run_in_executor(None, scan_directory_sync, path)
+
+        # Run retention cleanup if rules are configured
+        retention_json = get_setting("retention_rules", "{}")
+        try:
+            retention_rules = json.loads(retention_json) if retention_json else {}
+        except Exception:
+            retention_rules = {}
+        if retention_rules:
+            await loop.run_in_executor(None, run_retention_cleanup_sync, path, retention_rules)
+
         LAST_SCAN = {
             "started_at": start.isoformat(),
             "finished_at": datetime.utcnow().isoformat(),
@@ -217,11 +227,20 @@ def get_status(db: Session = Depends(get_db)):
 
 @app.get("/api/settings")
 def get_settings():
-    return {"storage_path": get_configured_storage_path()}
+    retention_json = get_setting("retention_rules", "{}")
+    try:
+        retention_rules = json.loads(retention_json) if retention_json else {}
+    except Exception:
+        retention_rules = {}
+    return {
+        "storage_path": get_configured_storage_path(),
+        "retention_rules": retention_rules,
+    }
 
 
 @app.post("/api/settings")
 def save_settings(data: dict):
+    resp = {"message": "Settings saved"}
     if "storage_path" in data:
         raw = str(data["storage_path"]).strip()
         if not raw:
@@ -232,8 +251,28 @@ def save_settings(data: dict):
             raise HTTPException(status_code=400, detail=str(exc))
         set_setting("storage_path", resolved)
         logger.info("Storage path updated: %s", resolved)
-        return {"message": "Settings saved", "storage_path": resolved}
-    return {"message": "Nothing changed", "storage_path": get_configured_storage_path()}
+        resp["storage_path"] = resolved
+    else:
+        resp["storage_path"] = get_configured_storage_path()
+
+    if "retention_rules" in data:
+        rules = data["retention_rules"]
+        if not isinstance(rules, dict):
+            raise HTTPException(status_code=400, detail="retention_rules must be a dictionary")
+        # Validate rules format: { folder: { "video_days": int, "image_days": int } }
+        clean_rules = {}
+        for folder, rule in rules.items():
+            folder_clean = str(folder).strip()
+            if not folder_clean or not isinstance(rule, dict):
+                continue
+            clean_rules[folder_clean] = {
+                "video_days": max(0, int(rule.get("video_days", 0) or 0)),
+                "image_days": max(0, int(rule.get("image_days", 0) or 0)),
+            }
+        set_setting("retention_rules", json.dumps(clean_rules))
+        resp["retention_rules"] = clean_rules
+
+    return resp
 
 # ---------------------------------------------------------------------------
 # Storage sources (local browse + SMB)
@@ -638,6 +677,23 @@ def stream_camera_mjpeg(cam_id: int, highres: bool = Query(False), snapshot: boo
 def trigger_scan(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_scan_async)
     return {"message": "Scan scheduled", "target_path": get_configured_storage_path()}
+
+
+@app.post("/api/archive/cleanup")
+async def trigger_cleanup():
+    """Manually run retention cleanup now."""
+    path = get_configured_storage_path()
+    retention_json = get_setting("retention_rules", "{}")
+    try:
+        retention_rules = json.loads(retention_json) if retention_json else {}
+    except Exception:
+        retention_rules = {}
+    if not retention_rules:
+        return {"message": "No retention rules configured", "stats": {"deleted_videos": 0, "deleted_images": 0, "deleted_thumbnails": 0}}
+
+    loop = asyncio.get_event_loop()
+    stats = await loop.run_in_executor(None, run_retention_cleanup_sync, path, retention_rules)
+    return {"message": "Retention cleanup finished", "stats": stats}
 
 # ---------------------------------------------------------------------------
 # Camera CRUD

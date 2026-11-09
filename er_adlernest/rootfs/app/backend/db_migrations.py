@@ -1,6 +1,12 @@
 """SQLite schema upgrades, independent of the application's ORM."""
+import os
 import re
 import sqlite3
+import logging
+from typing import Optional
+from datetime import datetime, timedelta
+
+logger = logging.getLogger("adlernest")
 
 
 _ADDITIONS = (
@@ -125,3 +131,95 @@ def correlate_timeline_events(raw_items: list) -> list:
 
     items.sort(key=lambda x: (x["start_sec"], x["id"]))
     return items
+
+
+def run_retention_cleanup_sync(root_dir: str, retention_rules: dict, thumb_dir: str = "/data/thumbnails", db_path: Optional[str] = None) -> dict:
+    """Purge recording files, database rows, and thumbnails older than configured retention days using sqlite3 directly."""
+    stats = {"deleted_videos": 0, "deleted_images": 0, "deleted_thumbnails": 0}
+    if not retention_rules:
+        return stats
+
+    target_db = db_path or os.getenv("DB_PATH", "/data/adlernest.db")
+    if not os.path.exists(target_db):
+        return stats
+
+    now = datetime.utcnow()
+    conn = sqlite3.connect(target_db)
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+        for subfolder, rules in retention_rules.items():
+            if not isinstance(rules, dict):
+                continue
+            video_days = int(rules.get("video_days", 0) or 0)
+            image_days = int(rules.get("image_days", 0) or 0)
+            if video_days <= 0 and image_days <= 0:
+                continue
+
+            folder_clean = subfolder.strip("/")
+            cursor = conn.execute(
+                """
+                SELECT id, camera_name, file_path, relative_path, media_type, recorded_at, thumbnail_path
+                FROM recordings
+                WHERE camera_name = ?
+                   OR relative_path LIKE ?
+                   OR relative_path LIKE ?
+                """,
+                (subfolder, f"{folder_clean}/%", f"{folder_clean}\\%")
+            )
+            rows = cursor.fetchall()
+            ids_to_delete = []
+
+            for r_id, cam_name, file_path, rel_path, media_type, rec_at_raw, thumb_path in rows:
+                mtype = media_type or "video"
+                limit_days = image_days if mtype == "image" else video_days
+                if limit_days <= 0:
+                    continue
+
+                try:
+                    # ISO format parsing or sqlite timestamp
+                    rec_at = datetime.fromisoformat(rec_at_raw) if isinstance(rec_at_raw, str) else rec_at_raw
+                except Exception:
+                    continue
+
+                if rec_at < (now - timedelta(days=limit_days)):
+                    # Delete physical file
+                    if file_path and os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                        except OSError as exc:
+                            logger.warning("Could not delete expired file %s: %s", file_path, exc)
+
+                    # Delete thumbnail
+                    if thumb_path:
+                        t_full = os.path.join(thumb_dir, thumb_path)
+                        if os.path.exists(t_full):
+                            try:
+                                os.remove(t_full)
+                                stats["deleted_thumbnails"] += 1
+                            except OSError:
+                                pass
+
+                    if mtype == "image":
+                        stats["deleted_images"] += 1
+                    else:
+                        stats["deleted_videos"] += 1
+                    ids_to_delete.append(r_id)
+
+            if ids_to_delete:
+                placeholders = ",".join("?" for _ in ids_to_delete)
+                conn.execute(f"DELETE FROM recordings WHERE id IN ({placeholders})", ids_to_delete)
+
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        logger.error("Retention cleanup error: %s", exc)
+    finally:
+        conn.close()
+
+    if stats["deleted_videos"] or stats["deleted_images"]:
+        logger.info(
+            "Retention cleanup finished: deleted_videos=%d deleted_images=%d deleted_thumbnails=%d",
+            stats["deleted_videos"], stats["deleted_images"], stats["deleted_thumbnails"]
+        )
+    return stats
+

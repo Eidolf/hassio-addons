@@ -49,10 +49,85 @@
     .form-group input:focus, .form-group select:focus { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
     .form-hint { font-size: 0.78rem; color: #64748b; margin-top: 5px; }
     .camera-grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
-    .cam-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden; position: relative; transition: border-color 0.2s; }
-    .cam-card:hover { border-color: var(--accent); }
-    .cam-header { padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; background: rgba(7,12,20,0.85); border-bottom: 1px solid var(--card-border); }
-    .cam-view { height: 260px; background: #020617; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+    .camera-grid.grid-dense { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.85rem; }
+    .camera-grid.grid-dense .cam-view { height: 190px; }
+    .camera-grid.grid-2col { grid-template-columns: repeat(2, 1fr); gap: 1.25rem; }
+    .camera-grid.grid-2col .cam-view { height: 340px; }
+    .camera-grid.grid-1col { grid-template-columns: 1fr; gap: 1.5rem; max-width: 1200px; margin: 0 auto; }
+    .camera-grid.grid-1col .cam-view { height: 520px; }
+    .camera-grid.grid-hero { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .camera-grid.grid-hero .cam-card:first-child { grid-column: 1 / -1; }
+    .camera-grid.grid-hero .cam-card:first-child .cam-view { height: 480px; }
+
+    .cam-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden; position: relative; transition: border-color 0.2s, box-shadow 0.2s; }
+    .cam-card:hover { border-color: var(--accent); box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
+
+    /* Modern Floating Camera Header (Revealed on hover) */
+    .cam-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 0.6rem 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(180deg, rgba(7, 12, 20, 0.92) 0%, rgba(7, 12, 20, 0.65) 75%, transparent 100%);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1), transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+    }
+    .cam-card:hover .cam-header,
+    .cam-card:focus-within .cam-header {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    @media (hover: none) {
+      .cam-header { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    }
+    .cam-title-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+      letter-spacing: 0.3px;
+    }
+    .cam-actions-wrap {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .cam-action-pill {
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(15, 23, 42, 0.75);
+      color: #cbd5e1;
+      font-size: 0.68rem;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      backdrop-filter: blur(4px);
+      transition: all 0.15s;
+    }
+    .cam-action-pill:hover {
+      background: var(--primary);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 8px rgba(37, 99, 235, 0.5);
+    }
+    .cam-view { height: 270px; background: #020617; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
     .cam-view img { width: 100%; height: 100%; object-fit: cover; }
     .cam-crosshair { position: absolute; inset: 0; pointer-events: none; border: 1px solid rgba(6,182,212,0.15); }
     .cam-badge-live { background: rgba(239,68,68,0.9); color: #fff; font-size: 0.68rem; padding: 2px 7px; border-radius: 3px; font-weight: 800; letter-spacing: 1px; display: inline-flex; align-items: center; gap: 5px; }
@@ -388,7 +463,40 @@
     </div>
 
     <!-- Live View Tab -->
-    <div id="tab-live"><div class="camera-grid" id="cameraGrid"></div></div>
+    <div id="tab-live">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:0.8rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+            <i class="bi bi-grid-fill" style="color:var(--accent);"></i> Tactical Live Matrix
+          </span>
+          <span id="liveStatusBadge" style="font-size:0.7rem;padding:2px 8px;border-radius:3px;font-weight:700;background:rgba(16,185,129,0.15);color:var(--success);">
+            <i class="bi bi-broadcast"></i> AUTO-REFRESH 5S
+          </span>
+        </div>
+        <!-- Grid View Layout Selector -->
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:0.75rem;color:var(--text-muted);font-weight:600;">LAYOUT:</span>
+          <div style="display:inline-flex;background:#070c14;border:1px solid var(--card-border);border-radius:6px;padding:2px;gap:2px;">
+            <button class="btn-secondary" style="padding:3px 9px;font-size:0.78rem;border:none;" id="btnGridAuto" onclick="setLiveGridLayout('auto')" title="Adaptive Responsive Grid (Default)">
+              <i class="bi bi-grid-3x3-gap"></i> Auto
+            </button>
+            <button class="btn-secondary" style="padding:3px 9px;font-size:0.78rem;border:none;" id="btnGridDense" onclick="setLiveGridLayout('dense')" title="Compact / Many Cameras">
+              <i class="bi bi-grid-3x3"></i> Compact
+            </button>
+            <button class="btn-secondary" style="padding:3px 9px;font-size:0.78rem;border:none;" id="btnGrid2col" onclick="setLiveGridLayout('2col')" title="2 Columns Medium">
+              <i class="bi bi-grid"></i> 2-Col
+            </button>
+            <button class="btn-secondary" style="padding:3px 9px;font-size:0.78rem;border:none;" id="btnGridHero" onclick="setLiveGridLayout('hero')" title="Spotlight / Hero + Thumbnails">
+              <i class="bi bi-layout-sidebar-inset-reverse"></i> Focus
+            </button>
+            <button class="btn-secondary" style="padding:3px 9px;font-size:0.78rem;border:none;" id="btnGrid1col" onclick="setLiveGridLayout('1col')" title="Large Single Column">
+              <i class="bi bi-view-stacked"></i> Large
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="camera-grid" id="cameraGrid"></div>
+    </div>
 
     <!-- Timeline 24h Tab -->
     <div id="tab-timeline" style="display:none;">
@@ -622,7 +730,7 @@
       </div>
 
       <!-- SMB / CIFS sources -->
-      <div class="stat-card" style="max-width:900px;">
+      <div class="stat-card" style="max-width:900px;margin-bottom:1.5rem;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
           <h3 style="color:var(--accent);"><i class="bi bi-hdd-network"></i> Network Sources (SMB / CIFS)</h3>
           <button class="btn-action" onclick="openSmbModal()"><i class="bi bi-plus-lg"></i> Add SMB Source</button>
@@ -632,6 +740,40 @@
           in the folder browser above. Credentials are stored securely on disk — never in config.yaml.
         </p>
         <div id="smbSourceList"><span style="color:var(--text-muted);font-size:0.85rem;">Loading…</span></div>
+      </div>
+
+      <!-- Retention & Auto-Cleanup Rules per Subfolder -->
+      <div class="stat-card" style="max-width:900px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;flex-wrap:wrap;gap:10px;">
+          <h3 style="color:var(--accent);margin:0;"><i class="bi bi-trash3"></i> Automatic Cleanup &amp; Retention Rules</h3>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-secondary" style="font-size:0.8rem;padding:6px 12px;" onclick="runManualCleanupNow()" title="Run retention cleanup now immediately">
+              <i class="bi bi-arrow-repeat"></i> Clean Now
+            </button>
+            <button class="btn-action" style="font-size:0.8rem;padding:6px 14px;" onclick="saveRetentionSettings()">
+              <i class="bi bi-check2"></i> Save Rules
+            </button>
+          </div>
+        </div>
+
+        <!-- Explanatory note about Thumbprints -->
+        <div style="background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.3);border-radius:6px;padding:0.75rem 1rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:10px;">
+          <i class="bi bi-info-circle-fill" style="color:#facc15;font-size:1.15rem;margin-top:2px;"></i>
+          <div style="font-size:0.84rem;color:#fef08a;line-height:1.45;">
+            <strong>Important note regarding Thumbprints &amp; Timeline:</strong><br>
+            Snapshots and images are automatically associated to video clips as AI thumbprints and timeline hover previews.
+            <strong>To keep the visual preview thumbprints intact for your video recordings, images should not be deleted earlier than the corresponding videos</strong> (i.e. Image retention days should be equal to or greater than video retention days).
+          </div>
+        </div>
+
+        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem;">
+          Configure how many days videos and images are retained per subfolder / camera. Set to <code>0</code> to keep indefinitely without auto-deletion.
+        </p>
+
+        <div id="retentionRulesContainer" style="display:grid;gap:0.75rem;">
+          <div style="color:var(--text-muted);font-size:0.85rem;">Loading configured subfolders…</div>
+        </div>
+        <div id="retentionMsg" style="display:none;margin-top:1rem;"></div>
       </div>
 
     </div><!-- /tab-settings -->
@@ -844,7 +986,41 @@
       } catch(e) { console.error('Failed to load cameras:', e); }
     }
 
+    // -----------------------------------------------------------------------
+    // Live Grid Layout selector
+    // -----------------------------------------------------------------------
+    let liveCurrentLayout = localStorage.getItem('er_live_layout') || 'auto';
+
+    function setLiveGridLayout(layout) {
+      liveCurrentLayout = layout;
+      localStorage.setItem('er_live_layout', layout);
+      applyLiveGridLayout();
+    }
+
+    function applyLiveGridLayout() {
+      const grid = document.getElementById('cameraGrid');
+      if (!grid) return;
+      grid.className = 'camera-grid';
+      if (liveCurrentLayout === 'dense') grid.classList.add('grid-dense');
+      else if (liveCurrentLayout === '2col') grid.classList.add('grid-2col');
+      else if (liveCurrentLayout === '1col') grid.classList.add('grid-1col');
+      else if (liveCurrentLayout === 'hero') grid.classList.add('grid-hero');
+
+      ['Auto', 'Dense', '2col', 'Hero', '1col'].forEach(k => {
+        const btn = document.getElementById('btnGrid' + k);
+        if (!btn) return;
+        if (liveCurrentLayout.toLowerCase() === k.toLowerCase()) {
+          btn.style.background = 'var(--primary)';
+          btn.style.color = '#fff';
+        } else {
+          btn.style.background = 'transparent';
+          btn.style.color = 'var(--text-muted)';
+        }
+      });
+    }
+
     function renderLiveView() {
+      applyLiveGridLayout();
       const grid = document.getElementById('cameraGrid');
       grid.innerHTML = '';
       if (appCameras.length === 0) {
@@ -875,21 +1051,19 @@
         const header = document.createElement('div');
         header.className = 'cam-header';
         const titleWrap = document.createElement('div');
-        const strong = document.createElement('strong');
-        strong.textContent = cam.name;
-        titleWrap.appendChild(strong);
+        titleWrap.className = 'cam-title-badge';
+        titleWrap.innerHTML = '<i class="bi bi-camera-video-fill" style="color:var(--accent);"></i> <span>' + escapeHtml(cam.name) + '</span>';
         header.append(titleWrap);
 
-        // Action buttons in header
+        // Action buttons in floating header
         const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex;gap:6px;align-items:center;';
+        actions.className = 'cam-actions-wrap';
 
         // Timeline link button
         const timelineBtn = document.createElement('button');
-        timelineBtn.className = 'cam-badge-snapshot';
-        timelineBtn.style.cssText = 'cursor:pointer;border:none;background:rgba(37,99,235,0.25);color:#93c5fd;font-size:0.68rem;padding:3px 8px;border-radius:3px;font-weight:700;letter-spacing:0.5px;';
-        timelineBtn.innerHTML = '<i class="bi bi-clock-history"></i> TIMELINE';
-        timelineBtn.title = 'Open 24h timeline for this camera';
+        timelineBtn.className = 'cam-action-pill';
+        timelineBtn.innerHTML = '<i class="bi bi-clock-history" style="color:#93c5fd;"></i> <span>TIMELINE</span>';
+        timelineBtn.title = 'Open 24h timeline for ' + cam.name;
         timelineBtn.onclick = (e) => {
           e.stopPropagation();
           const tlNavBtn = document.querySelector('.nav-btn[onclick*="timeline"]');
@@ -900,10 +1074,9 @@
 
         // Archive link button
         const archiveBtn = document.createElement('button');
-        archiveBtn.className = 'cam-badge-snapshot';
-        archiveBtn.style.cssText = 'cursor:pointer;border:none;background:rgba(6,182,212,0.15);color:var(--accent);font-size:0.68rem;padding:3px 8px;border-radius:3px;font-weight:700;letter-spacing:0.5px;';
-        archiveBtn.innerHTML = '<i class="bi bi-collection-play"></i> ARCHIVE';
-        archiveBtn.title = 'Show archive for this camera';
+        archiveBtn.className = 'cam-action-pill';
+        archiveBtn.innerHTML = '<i class="bi bi-collection-play" style="color:var(--accent);"></i> <span>ARCHIVE</span>';
+        archiveBtn.title = 'Show archive for ' + cam.name;
         archiveBtn.onclick = (e) => {
           e.stopPropagation();
           const archiveNavBtn = document.querySelector('.nav-btn[onclick*="archive"]');
@@ -914,10 +1087,10 @@
 
         // Fullscreen button
         const fsBtn = document.createElement('button');
-        fsBtn.className = 'cam-badge-live';
-        fsBtn.style.cssText = 'cursor:pointer;border:none;font-size:0.68rem;padding:3px 8px;border-radius:3px;font-weight:700;letter-spacing:0.5px;';
-        fsBtn.innerHTML = '<i class="bi bi-fullscreen"></i>';
-        fsBtn.title = 'Fullscreen';
+        fsBtn.className = 'cam-action-pill';
+        fsBtn.style.borderColor = 'rgba(239,68,68,0.4)';
+        fsBtn.innerHTML = '<i class="bi bi-arrows-fullscreen" style="color:#ef4444;"></i>';
+        fsBtn.title = 'Live Stream Fullscreen';
         fsBtn.onclick = (e) => { e.stopPropagation(); openCamFullscreen(cam); };
         actions.appendChild(fsBtn);
 
@@ -1435,6 +1608,146 @@
       } catch(e) { showMsg('storageMsg', 'Error: ' + e); }
     }
 
+    // -----------------------------------------------------------------------
+    // Retention Rules per Subfolder
+    // -----------------------------------------------------------------------
+    let currentRetentionRules = {};
+
+    async function loadRetentionSettings() {
+      try {
+        const res = await apiFetch('api/settings');
+        if (!res.ok) return;
+        const data = await res.json();
+        currentRetentionRules = data.retention_rules || {};
+        renderRetentionRules();
+      } catch (e) {
+        console.error('Failed to load retention settings:', e);
+      }
+    }
+
+    function renderRetentionRules() {
+      const container = document.getElementById('retentionRulesContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      // Gather subfolders from configured cameras plus existing rules
+      const subfolders = new Set();
+      appCameras.forEach(c => {
+        const name = (c.folder_mapping || c.name || '').trim();
+        if (name) subfolders.add(name);
+      });
+      Object.keys(currentRetentionRules).forEach(f => subfolders.add(f));
+
+      if (subfolders.size === 0) {
+        container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0;">No cameras or subfolders configured yet. Add cameras under "Cameras &amp; Mappings".</div>';
+        return;
+      }
+
+      const table = document.createElement('div');
+      table.style.cssText = 'display:flex;flex-direction:column;gap:8px;background:#070c14;border:1px solid var(--card-border);border-radius:6px;padding:12px;';
+
+      // Header row
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:12px;font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);';
+      hdr.innerHTML = '<div>Camera / Subfolder</div><div>Video Retention (Days)</div><div>Image Retention (Days)</div>';
+      table.appendChild(hdr);
+
+      Array.from(subfolders).sort().forEach(folder => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:12px;align-items:center;';
+
+        const nameCol = document.createElement('div');
+        nameCol.style.cssText = 'font-weight:600;font-size:0.88rem;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px;';
+        nameCol.innerHTML = '<i class="bi bi-folder2" style="color:var(--accent);"></i> ' + escapeHtml(folder);
+
+        const rule = currentRetentionRules[folder] || { video_days: 0, image_days: 0 };
+
+        const vidCol = document.createElement('div');
+        const vidInput = document.createElement('input');
+        vidInput.type = 'number';
+        vidInput.min = '0';
+        vidInput.value = rule.video_days || 0;
+        vidInput.dataset.folder = folder;
+        vidInput.dataset.type = 'video';
+        vidInput.style.cssText = 'width:100%;background:#0b1120;border:1px solid var(--card-border);color:#fff;padding:6px 10px;border-radius:5px;font-size:0.85rem;';
+        vidCol.appendChild(vidInput);
+
+        const imgCol = document.createElement('div');
+        const imgInput = document.createElement('input');
+        imgInput.type = 'number';
+        imgInput.min = '0';
+        imgInput.value = rule.image_days || 0;
+        imgInput.dataset.folder = folder;
+        imgInput.dataset.type = 'image';
+        imgInput.style.cssText = 'width:100%;background:#0b1120;border:1px solid var(--card-border);color:#fff;padding:6px 10px;border-radius:5px;font-size:0.85rem;';
+        imgCol.appendChild(imgInput);
+
+        row.append(nameCol, vidCol, imgCol);
+        table.appendChild(row);
+      });
+
+      container.appendChild(table);
+    }
+
+    async function saveRetentionSettings() {
+      clearMsg('retentionMsg');
+      const container = document.getElementById('retentionRulesContainer');
+      const inputs = container.querySelectorAll('input[data-folder]');
+      const newRules = {};
+
+      inputs.forEach(inp => {
+        const f = inp.dataset.folder;
+        const type = inp.dataset.type;
+        const val = Math.max(0, parseInt(inp.value, 10) || 0);
+        if (!newRules[f]) newRules[f] = { video_days: 0, image_days: 0 };
+        if (type === 'video') newRules[f].video_days = val;
+        if (type === 'image') newRules[f].image_days = val;
+      });
+
+      // Check if user set image_days < video_days when video_days > 0
+      let warningText = '';
+      for (const [folder, r] of Object.entries(newRules)) {
+        if (r.video_days > 0 && r.image_days > 0 && r.image_days < r.video_days) {
+          warningText += `Warning: For "${folder}", images are deleted after ${r.image_days}d while videos are kept for ${r.video_days}d. Video thumbprints on the timeline will disappear before the video expires. `;
+        }
+      }
+
+      try {
+        const res = await apiFetch('api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ retention_rules: newRules }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          currentRetentionRules = data.retention_rules || newRules;
+          showMsg('retentionMsg', 'Retention rules saved successfully.' + (warningText ? ' ' + warningText : ''), !warningText);
+        } else {
+          showMsg('retentionMsg', 'Failed to save retention rules.', true);
+        }
+      } catch (e) {
+        showMsg('retentionMsg', 'Error saving retention rules: ' + e, true);
+      }
+    }
+
+    async function runManualCleanupNow() {
+      clearMsg('retentionMsg');
+      try {
+        showMsg('retentionMsg', 'Running retention cleanup...', false);
+        const res = await apiFetch('api/archive/cleanup', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          const s = data.stats || {};
+          showMsg('retentionMsg', `Cleanup completed: ${s.deleted_videos || 0} video(s), ${s.deleted_images || 0} image(s), and ${s.deleted_thumbnails || 0} thumbnail(s) removed.`, false);
+          fetchStatus();
+        } else {
+          showMsg('retentionMsg', 'Cleanup failed.', true);
+        }
+      } catch (e) {
+        showMsg('retentionMsg', 'Error during cleanup: ' + e, true);
+      }
+    }
+
     async function triggerScan() {
       try {
         await apiFetch('api/archive/scan', {method: 'POST'});
@@ -1645,7 +1958,7 @@
 
       if (tab === 'timeline') initTimelineTab();
       if (tab === 'archive') loadRecordings();
-      if (tab === 'settings') { browseDirectory(); loadSmbSources(); }
+      if (tab === 'settings') { browseDirectory(); loadSmbSources(); loadRetentionSettings(); }
     }
 
     // -----------------------------------------------------------------------

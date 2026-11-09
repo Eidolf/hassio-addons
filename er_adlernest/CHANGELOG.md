@@ -2,20 +2,27 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.3.0] - 2026-11-09
+
+### Added
+- **Tactical Live Matrix Layout Switcher**:
+  - Added layout configuration buttons (`Auto`, `Compact`, `2-Col`, `Focus`, `Large`) in the Live View tab.
+  - Allows adapting tile arrangement and video height based on screen size, camera count, or preferred spotlight focus.
+  - Saves layout preference persistently in `localStorage`.
+- **Modernized Floating Camera Header on Hover**:
+  - Replaced the static header strip on camera cards with a sleek, translucent floating overlay header (`.cam-header`) with backdrop blur and pill buttons (`.cam-action-pill`).
+  - Overlay automatically appears smoothly on mouse hover (or focus/touch) and stays hidden otherwise, providing an unobstructed full video stream view.
+- **Per-Subfolder Retention Rules & Automatic Cleanup**:
+  - Added customizable retention days for videos and images per camera / archive subfolder under "Storage & System".
+  - Includes prominent advisory warning that image retention should not be shorter than video retention to prevent losing associated AI thumbprints on the timeline.
+  - Automatic retention cleanup runs during scheduled background scans, with a "Clean Now" button for manual execution (`POST /api/archive/cleanup`).
+
 ## [1.2.9] - 2026-11-06
 
 ### Added
 - **Modern Tactical Calendar Date Picker**:
   - Replaced native browser date input with a custom dark-themed interactive calendar dropdown overlay (`#tlCalendarDropdown`).
   - Features quick month navigation (`<` / `>`), active day highlighting, "Today" shortcut, and indicators (`dp-has-recordings`) for dates with existing footage queried via `/api/recordings/days`.
-
-### Changed
-- **Pure Video Timeline Stream**:
-  - Image snapshots are now exclusively used as thumbprints, event descriptors, and overlay hover previews.
-  - Excluded snapshot images from being rendered as standalone track entities on the timeline, eliminating clutter right before or during video clips and providing a completely clean video-centric timeline.
-  - Increased snapshot-to-video correlation window to $\pm 45\text{s}$ to ensure pre-event AI detection snapshots accurately enrich their corresponding video recording.
-
-## [1.2.9] - 2026-11-06
 
 ### Changed
 - **Pure Video Timeline Stream**:
