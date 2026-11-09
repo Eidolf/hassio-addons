@@ -2,6 +2,12 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.3.4] - 2026-11-09
+
+### Removed
+- **Redundant Archive Day Chip Strip**:
+  - Removed the horizontal day chip strip (`#archiveDayStrip`) now that the compact date dropdown field provides the full list with item counts, eliminating duplicate UI elements.
+
 ## [1.3.3] - 2026-11-09
 
 ### Added
