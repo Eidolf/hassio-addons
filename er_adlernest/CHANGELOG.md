@@ -2,6 +2,16 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.3.1] - 2026-11-09
+
+### Fixed
+- **Live Matrix Camera Card Rendering**:
+  - Fixed a JavaScript `ReferenceError: escapeHtml is not defined` that prevented camera cards from rendering on the Live Matrix and broke the tab view.
+  - Defined standard HTML escaping helper `escapeHtml` in the frontend.
+- **Storage & System Subfolder Auto-Discovery**:
+  - Enhanced `/api/settings` to dynamically discover and return all subfolders present in the filesystem storage directory, database recordings, and camera configurations (`available_subfolders`).
+  - Fixed the Retention & Auto-Cleanup UI under "Storage & System" so all individual camera subfolders appear with their retention day configuration rows.
+
 ## [1.3.0] - 2026-11-09
 
 ### Added

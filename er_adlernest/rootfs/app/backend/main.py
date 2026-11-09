@@ -41,7 +41,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.3.0",
+    version="1.3.1",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -226,15 +226,47 @@ def get_status(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/settings")
-def get_settings():
+def get_settings(db: Session = Depends(get_db)):
+    storage_path = get_configured_storage_path()
     retention_json = get_setting("retention_rules", "{}")
     try:
         retention_rules = json.loads(retention_json) if retention_json else {}
     except Exception:
         retention_rules = {}
+
+    # Discover available subfolders from:
+    # 1. Configured cameras (folder_mapping or name)
+    # 2. Existing recordings in database
+    # 3. Physical subdirectories under active storage_path
+    available_subfolders = set()
+    for c in db.query(Camera).all():
+        mapping = (c.folder_mapping or c.name or "").strip()
+        if mapping:
+            available_subfolders.add(mapping)
+
+    # From recordings table
+    rec_cams = db.query(Recording.camera_name).distinct().all()
+    for (r_name,) in rec_cams:
+        if r_name and r_name != "DefaultCamera":
+            available_subfolders.add(r_name)
+
+    # From filesystem directories under active storage_path
+    if storage_path and os.path.isdir(storage_path):
+        try:
+            for entry in os.scandir(storage_path):
+                if entry.is_dir() and not entry.name.startswith("."):
+                    available_subfolders.add(entry.name)
+        except Exception as exc:
+            logger.debug("Could not scan storage directory subfolders: %s", exc)
+
+    for rule_key in retention_rules.keys():
+        if rule_key:
+            available_subfolders.add(rule_key)
+
     return {
-        "storage_path": get_configured_storage_path(),
+        "storage_path": storage_path,
         "retention_rules": retention_rules,
+        "available_subfolders": sorted(list(available_subfolders)),
     }
 
 

@@ -428,6 +428,17 @@
       .timeline-cam-label, .timeline-header-spacer { width: 95px; font-size: 0.72rem; }
     }
   </style>
+  <script>
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  </script>
 </head>
 <body>
 
@@ -1612,6 +1623,7 @@
     // Retention Rules per Subfolder
     // -----------------------------------------------------------------------
     let currentRetentionRules = {};
+    let currentAvailableSubfolders = [];
 
     async function loadRetentionSettings() {
       try {
@@ -1619,6 +1631,7 @@
         if (!res.ok) return;
         const data = await res.json();
         currentRetentionRules = data.retention_rules || {};
+        currentAvailableSubfolders = data.available_subfolders || [];
         renderRetentionRules();
       } catch (e) {
         console.error('Failed to load retention settings:', e);
@@ -1630,16 +1643,18 @@
       if (!container) return;
       container.innerHTML = '';
 
-      // Gather subfolders from configured cameras plus existing rules
-      const subfolders = new Set();
+      // Gather subfolders from backend discovered folders, configured cameras, and existing rules
+      const subfolders = new Set(currentAvailableSubfolders);
       appCameras.forEach(c => {
         const name = (c.folder_mapping || c.name || '').trim();
         if (name) subfolders.add(name);
       });
-      Object.keys(currentRetentionRules).forEach(f => subfolders.add(f));
+      Object.keys(currentRetentionRules).forEach(f => {
+        if (f) subfolders.add(f);
+      });
 
       if (subfolders.size === 0) {
-        container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0;">No cameras or subfolders configured yet. Add cameras under "Cameras &amp; Mappings".</div>';
+        container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0;">No cameras or subfolders configured yet. Add cameras under "Cameras &amp; Mappings" or configure your active archive path above.</div>';
         return;
       }
 
