@@ -56,8 +56,8 @@
     .camera-grid.grid-1col { grid-template-columns: 1fr; gap: 1.5rem; max-width: 1200px; margin: 0 auto; }
     .camera-grid.grid-1col .cam-view { height: 520px; }
     .camera-grid.grid-hero { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-    .camera-grid.grid-hero .cam-card:first-child { grid-column: 1 / -1; }
-    .camera-grid.grid-hero .cam-card:first-child .cam-view { height: 480px; }
+    .camera-grid.grid-hero .cam-card.is-hero { grid-column: 1 / -1; }
+    .camera-grid.grid-hero .cam-card.is-hero .cam-view { height: 480px; }
 
     .cam-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden; position: relative; transition: border-color 0.2s, box-shadow 0.2s; }
     .cam-card:hover { border-color: var(--accent); box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
@@ -1001,11 +1001,25 @@
     // Live Grid Layout selector
     // -----------------------------------------------------------------------
     let liveCurrentLayout = localStorage.getItem('er_live_layout') || 'auto';
+    let liveHeroCameraId = parseInt(localStorage.getItem('er_live_hero_cam_id') || '0', 10);
 
     function setLiveGridLayout(layout) {
       liveCurrentLayout = layout;
       localStorage.setItem('er_live_layout', layout);
       applyLiveGridLayout();
+      if (layout === 'hero') {
+        renderLiveView();
+      }
+    }
+
+    function setLiveHeroCamera(camId) {
+      liveHeroCameraId = camId;
+      localStorage.setItem('er_live_hero_cam_id', String(camId));
+      if (liveCurrentLayout !== 'hero') {
+        setLiveGridLayout('hero');
+      } else {
+        renderLiveView();
+      }
     }
 
     function applyLiveGridLayout() {
@@ -1054,21 +1068,46 @@
         grid.appendChild(empty);
         return;
       }
-      appCameras.forEach(cam => {
+
+      // Determine hero camera if layout is hero
+      let orderedCameras = [...appCameras];
+      if (liveCurrentLayout === 'hero') {
+        const heroCam = orderedCameras.find(c => c.id === liveHeroCameraId) || orderedCameras[0];
+        if (heroCam) {
+          liveHeroCameraId = heroCam.id;
+          orderedCameras = [heroCam, ...orderedCameras.filter(c => c.id !== heroCam.id)];
+        }
+      }
+
+      orderedCameras.forEach((cam, idx) => {
+        const isHero = liveCurrentLayout === 'hero' && idx === 0;
         const card = document.createElement('div');
-        card.className = 'cam-card';
+        card.className = 'cam-card' + (isHero ? ' is-hero' : '');
 
         // Header
         const header = document.createElement('div');
         header.className = 'cam-header';
         const titleWrap = document.createElement('div');
         titleWrap.className = 'cam-title-badge';
-        titleWrap.innerHTML = '<i class="bi bi-camera-video-fill" style="color:var(--accent);"></i> <span>' + escapeHtml(cam.name) + '</span>';
+        titleWrap.innerHTML = '<i class="bi bi-camera-video-fill" style="color:var(--accent);"></i> <span>' + escapeHtml(cam.name) + '</span>' +
+          (isHero ? ' <span style="font-size:0.65rem;background:var(--accent);color:#070c14;padding:1px 5px;border-radius:3px;font-weight:800;margin-left:4px;">FOCUS</span>' : '');
         header.append(titleWrap);
 
         // Action buttons in floating header
         const actions = document.createElement('div');
         actions.className = 'cam-actions-wrap';
+
+        // Set Focus button
+        const focusBtn = document.createElement('button');
+        focusBtn.className = 'cam-action-pill';
+        focusBtn.style.color = isHero ? 'var(--accent)' : '#cbd5e1';
+        focusBtn.innerHTML = isHero ? '<i class="bi bi-star-fill" style="color:#facc15;"></i>' : '<i class="bi bi-star"></i>';
+        focusBtn.title = isHero ? 'Currently in focus' : 'Set as Focus Camera';
+        focusBtn.onclick = (e) => {
+          e.stopPropagation();
+          setLiveHeroCamera(cam.id);
+        };
+        actions.appendChild(focusBtn);
 
         // Timeline link button
         const timelineBtn = document.createElement('button');
@@ -1643,15 +1682,14 @@
       if (!container) return;
       container.innerHTML = '';
 
-      // Gather subfolders from backend discovered folders, configured cameras, and existing rules
+      // Gather subfolders strictly from backend discovered storage subfolders (or fallback)
       const subfolders = new Set(currentAvailableSubfolders);
-      appCameras.forEach(c => {
-        const name = (c.folder_mapping || c.name || '').trim();
-        if (name) subfolders.add(name);
-      });
-      Object.keys(currentRetentionRules).forEach(f => {
-        if (f) subfolders.add(f);
-      });
+      if (subfolders.size === 0) {
+        appCameras.forEach(c => {
+          const name = (c.folder_mapping || '').trim();
+          if (name) subfolders.add(name);
+        });
+      }
 
       if (subfolders.size === 0) {
         container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0;">No cameras or subfolders configured yet. Add cameras under "Cameras &amp; Mappings" or configure your active archive path above.</div>';

@@ -41,7 +41,7 @@ logger = logging.getLogger("adlernest")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="ER-Adlernest CCTV & Video Archive Manager",
-    version="1.3.1",
+    version="1.3.2",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -234,39 +234,34 @@ def get_settings(db: Session = Depends(get_db)):
     except Exception:
         retention_rules = {}
 
-    # Discover available subfolders from:
-    # 1. Configured cameras (folder_mapping or name)
-    # 2. Existing recordings in database
-    # 3. Physical subdirectories under active storage_path
-    available_subfolders = set()
-    for c in db.query(Camera).all():
-        mapping = (c.folder_mapping or c.name or "").strip()
-        if mapping:
-            available_subfolders.add(mapping)
-
-    # From recordings table
-    rec_cams = db.query(Recording.camera_name).distinct().all()
-    for (r_name,) in rec_cams:
-        if r_name and r_name != "DefaultCamera":
-            available_subfolders.add(r_name)
-
-    # From filesystem directories under active storage_path
+    # Discover only actual subfolders residing under the active archive path.
+    # If the storage directory exists, its top-level directories define the physical subfolders.
+    discovered_subfolders = set()
     if storage_path and os.path.isdir(storage_path):
         try:
             for entry in os.scandir(storage_path):
                 if entry.is_dir() and not entry.name.startswith("."):
-                    available_subfolders.add(entry.name)
+                    discovered_subfolders.add(entry.name)
         except Exception as exc:
             logger.debug("Could not scan storage directory subfolders: %s", exc)
 
-    for rule_key in retention_rules.keys():
-        if rule_key:
-            available_subfolders.add(rule_key)
+    # Fallback if storage path is empty or not yet mounted: use configured camera folder mappings
+    if not discovered_subfolders:
+        for c in db.query(Camera).all():
+            mapping = (c.folder_mapping or "").strip()
+            if mapping:
+                discovered_subfolders.add(mapping)
+
+    # Clean existing retention rules so old, obsolete camera-name keys do not linger
+    clean_retention_rules = {}
+    for k, v in retention_rules.items():
+        if k in discovered_subfolders:
+            clean_retention_rules[k] = v
 
     return {
         "storage_path": storage_path,
-        "retention_rules": retention_rules,
-        "available_subfolders": sorted(list(available_subfolders)),
+        "retention_rules": clean_retention_rules,
+        "available_subfolders": sorted(list(discovered_subfolders)),
     }
 
 

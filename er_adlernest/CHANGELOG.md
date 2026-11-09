@@ -2,6 +2,19 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.3.2] - 2026-11-09
+
+### Added
+- **Selectable Hero Camera in Live Matrix Focus Mode**:
+  - Added interactive focus button (`Set as Focus Feed` / star icon) on each camera card's floating header.
+  - Clicking focus highlights that camera as the primary large hero tile in Focus mode.
+  - Selected focus camera preference is saved persistently in `localStorage`.
+
+### Fixed
+- **Automatic Cleanup Subfolder Listing**:
+  - Restricted retention rules discovery strictly to actual physical subdirectories inside the active archive path (`storage_path`).
+  - Removed duplicate virtual camera names and standard resolution aliases (`Kamera-Autounterstand`, etc.) from the retention settings table, matching the physical folder structure shown in Active Archive Path (`Autounterstand`, `Holzhuette`, `Terrasse`).
+
 ## [1.3.1] - 2026-11-09
 
 ### Fixed
