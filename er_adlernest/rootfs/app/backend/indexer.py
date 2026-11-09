@@ -142,6 +142,7 @@ def scan_directory_sync(root_dir: str, thumb_dir: str = "/data/thumbnails") -> i
     updated = 0
     errors = 0
 
+    pruned = 0
     try:
         cams = db.query(Camera).all()
         folder_mappings = {c.folder_mapping.strip(): c.name for c in cams if c.folder_mapping}
@@ -245,6 +246,37 @@ def scan_directory_sync(root_dir: str, thumb_dir: str = "/data/thumbnails") -> i
                         pass
 
         db.commit()
+
+        # Prune orphan database records whose physical files were deleted externally or by retention policy
+        try:
+            stored_records = db.query(Recording.id, Recording.file_path, Recording.thumbnail_path).all()
+            missing_ids = []
+            for r_id, f_path, t_rel in stored_records:
+                if f_path and not os.path.exists(f_path):
+                    missing_ids.append(r_id)
+                    if t_rel:
+                        t_full = os.path.join(thumb_dir, t_rel)
+                        if os.path.exists(t_full):
+                            try:
+                                os.remove(t_full)
+                            except OSError:
+                                pass
+
+            if missing_ids:
+                # Delete in batches of 500
+                for i in range(0, len(missing_ids), 500):
+                    batch = missing_ids[i:i+500]
+                    db.query(Recording).filter(Recording.id.in_(batch)).delete(synchronize_session=False)
+                db.commit()
+                pruned = len(missing_ids)
+                logger.info("Pruned %d orphan database records whose files no longer exist", pruned)
+        except Exception as exc:
+            logger.warning("Error pruning orphan recordings: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
     except OSError as exc:
         logger.error("Scan aborted (NAS/IO error) for %s: %s", root_dir, exc)
         try:
@@ -261,10 +293,10 @@ def scan_directory_sync(root_dir: str, thumb_dir: str = "/data/thumbnails") -> i
         db.close()
 
     elapsed = time.monotonic() - t_start
-    if new_records or updated:
+    if new_records or updated or pruned:
         logger.info(
-            "Scan finished: %s | new=%d updated=%d skipped=%d errors=%d elapsed=%.1fs",
-            root_dir, new_records, updated, skipped, errors, elapsed,
+            "Scan finished: %s | new=%d updated=%d pruned=%d skipped=%d errors=%d elapsed=%.1fs",
+            root_dir, new_records, updated, pruned, skipped, errors, elapsed,
         )
     else:
         logger.debug(

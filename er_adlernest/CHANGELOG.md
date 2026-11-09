@@ -2,6 +2,18 @@
 
 All notable changes to the ER-Adlernest Home Assistant Add-on will be documented in this file.
 
+## [1.3.3] - 2026-11-09
+
+### Added
+- **Archive Date Selection Dropdown**:
+  - Added a date dropdown selector (`#filterDateSelect`) displaying each recorded date along with its item count (`YYYY-MM-DD (count)`).
+  - Synchronized with the date picker and day strip to streamline navigating across multiple recording days without horizontal scrolling.
+
+### Fixed
+- **Index Synchronization & Orphan Recording Pruning**:
+  - During archive scans, the indexer now automatically detects and prunes database records and thumbnails whose physical media files were deleted externally or purged by retention policy.
+  - Fixes database statistics and days list displaying stale entries for deleted media files.
+
 ## [1.3.2] - 2026-11-09
 
 ### Added
